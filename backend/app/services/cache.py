@@ -94,7 +94,10 @@ class CacheService:
     async def cleanup(self):
         """Close Redis connection."""
         if self.redis:
-            await self.redis.close()
+            # redis-py 5.x deprecated close() in favor of aclose(); fall back
+            # for older clients that don't have it.
+            closer = getattr(self.redis, "aclose", None) or self.redis.close
+            await closer()
             logger.info("Redis cache connection closed")
 
 
