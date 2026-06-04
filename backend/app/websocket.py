@@ -24,7 +24,7 @@ TMPDIR = Path(tempfile.gettempdir())
 
 # Owner-only file/dir modes — keep another user on a shared host from
 # eavesdropping on raw audio inputs or in-flight video chunks.
-_OWNER_ONLY_FILE = stat.S_IRUSR | stat.S_IWUSR              # 0o600
+_OWNER_ONLY_FILE = stat.S_IRUSR | stat.S_IWUSR  # 0o600
 _OWNER_ONLY_DIR = stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR  # 0o700
 
 
@@ -58,6 +58,7 @@ def _write_private_bytes(path: Path, data: bytes) -> None:
         os.chmod(str(path), _OWNER_ONLY_FILE)
     except OSError:
         pass
+
 
 # Minimum sentence length (chars) to bother animating
 _MIN_SENTENCE_LEN = 8
@@ -115,10 +116,12 @@ class ConnectionManager:
 
     async def _load_session_data(self, session_id: str):
         try:
-            from app.database import AsyncSessionLocal
-            from app.models import Session as SessionModel, Message
             from sqlalchemy import select
             from sqlalchemy.orm import joinedload
+
+            from app.database import AsyncSessionLocal
+            from app.models import Message
+            from app.models import Session as SessionModel
 
             async with AsyncSessionLocal() as db:
                 result = await db.execute(
@@ -180,7 +183,9 @@ class ConnectionManager:
                         wav = await self._get_voice_wav_path(avatar.voice_id)
                         if wav:
                             self.session_data[session_id]["voice_wav"] = wav
-                            logger.info(f"Auto-loaded voice {avatar.voice_id} for session {session_id}")
+                            logger.info(
+                                f"Auto-loaded voice {avatar.voice_id} for session {session_id}"
+                            )
                     logger.info(f"Loaded avatar {avatar.id} for session {session_id}")
 
         except Exception as e:
@@ -250,6 +255,7 @@ class ConnectionManager:
         if session_dir.exists():
             try:
                 import shutil
+
                 await asyncio.to_thread(shutil.rmtree, str(session_dir), True)
             except Exception as e:
                 logger.warning(f"Could not clean session tmp dir for {session_id}: {e}")
@@ -267,10 +273,13 @@ class ConnectionManager:
             task.cancel()
             # Tell the client to stop playing the queued video chunks too —
             # otherwise they'd keep arriving from the buffer.
-            await self.send_message(session_id, {
-                "type": "interrupted",
-                "message": "Previous response interrupted",
-            })
+            await self.send_message(
+                session_id,
+                {
+                    "type": "interrupted",
+                    "message": "Previous response interrupted",
+                },
+            )
             return True
         return False
 
@@ -302,14 +311,17 @@ class ConnectionManager:
         try:
             from app.database import AsyncSessionLocal
             from app.models import Message
+
             async with AsyncSessionLocal() as db:
-                db.add(Message(
-                    session_id=session_id,
-                    role=role,
-                    content=content,
-                    content_type="text",
-                    latency=latency,
-                ))
+                db.add(
+                    Message(
+                        session_id=session_id,
+                        role=role,
+                        content=content,
+                        content_type="text",
+                        latency=latency,
+                    )
+                )
                 await db.commit()
         except Exception as e:
             logger.warning(f"Could not persist {role} message for {session_id}: {e}")
@@ -323,9 +335,10 @@ class ConnectionManager:
         word boundary. Cheap, no extra LLM call.
         """
         try:
+            from sqlalchemy import func, select
+
             from app.database import AsyncSessionLocal
             from app.models import Conversation, Message
-            from sqlalchemy import select, func
 
             async with AsyncSessionLocal() as db:
                 exists = await db.execute(
@@ -340,16 +353,19 @@ class ConnectionManager:
                     snippet = snippet[: cutoff if cutoff > 30 else 60].rstrip(",.!?;:") + "…"
 
                 count_res = await db.execute(
-                    select(func.count()).select_from(Message)
+                    select(func.count())
+                    .select_from(Message)
                     .where(Message.session_id == session_id)
                 )
                 msg_count = int(count_res.scalar() or 0)
 
-                db.add(Conversation(
-                    session_id=session_id,
-                    title=snippet or "New Conversation",
-                    message_count=msg_count,
-                ))
+                db.add(
+                    Conversation(
+                        session_id=session_id,
+                        title=snippet or "New Conversation",
+                        message_count=msg_count,
+                    )
+                )
                 await db.commit()
         except Exception as e:
             logger.warning(f"Could not auto-title conversation for {session_id}: {e}")
@@ -393,26 +409,33 @@ class ConnectionManager:
     async def _handle_audio_inner(self, session_id: str, audio_data: str) -> None:
         tmp_audio = _private_session_dir(session_id) / "input.webm"
         try:
-            await self.send_message(session_id, {
-                "type": "status", "message": "Transcribing audio…", "stage": "transcription"
-            })
+            await self.send_message(
+                session_id,
+                {"type": "status", "message": "Transcribing audio…", "stage": "transcription"},
+            )
 
             try:
                 raw = base64.b64decode(audio_data, validate=False)
             except Exception:
-                await self.send_message(session_id, {"type": "error", "message": "Invalid audio data"})
+                await self.send_message(
+                    session_id, {"type": "error", "message": "Invalid audio data"}
+                )
                 return
 
             # 50 MB hard cap so a malicious client cannot OOM the server
             if len(raw) > 50 * 1024 * 1024:
-                await self.send_message(session_id, {"type": "error", "message": "Audio payload too large"})
+                await self.send_message(
+                    session_id, {"type": "error", "message": "Audio payload too large"}
+                )
                 return
 
             await asyncio.to_thread(_write_private_bytes, tmp_audio, raw)
             text = await stt_service.transcribe(str(tmp_audio))
 
             if not text:
-                await self.send_message(session_id, {"type": "error", "message": "Could not transcribe audio"})
+                await self.send_message(
+                    session_id, {"type": "error", "message": "Could not transcribe audio"}
+                )
                 return
 
             await self.send_message(session_id, {"type": "transcription", "text": text})
@@ -423,7 +446,9 @@ class ConnectionManager:
             raise  # propagate barge-in cancellation cleanly
         except Exception as e:
             logger.error(f"Audio error [{session_id}]: {e}")
-            await self.send_message(session_id, {"type": "error", "message": "Audio processing failed"})
+            await self.send_message(
+                session_id, {"type": "error", "message": "Audio processing failed"}
+            )
         finally:
             tmp_audio.unlink(missing_ok=True)
 
@@ -446,10 +471,13 @@ class ConnectionManager:
             await self.send_message(session_id, {"type": "error", "message": "Empty message"})
             return
         if len(text) > MAX_TEXT_INPUT_LEN:
-            await self.send_message(session_id, {
-                "type": "error",
-                "message": f"Message too long ({len(text)} chars). Limit is {MAX_TEXT_INPUT_LEN}.",
-            })
+            await self.send_message(
+                session_id,
+                {
+                    "type": "error",
+                    "message": f"Message too long ({len(text)} chars). Limit is {MAX_TEXT_INPUT_LEN}.",
+                },
+            )
             return
 
         await self.interrupt_active_turn(session_id)
@@ -477,7 +505,9 @@ class ConnectionManager:
             # Auto-title the conversation from the first user turn (idempotent)
             await self._ensure_conversation_title(session_id, text)
 
-            await self.send_message(session_id, {"type": "status", "message": "Thinking…", "stage": "llm"})
+            await self.send_message(
+                session_id, {"type": "status", "message": "Thinking…", "stage": "llm"}
+            )
 
             # Bounded queue prevents the LLM producer from racing too far ahead
             sentence_queue: asyncio.Queue[Optional[str]] = asyncio.Queue(maxsize=4)
@@ -506,7 +536,7 @@ class ConnectionManager:
 
     # ── streaming pipeline ────────────────────────────────────────────────────
 
-    _SENTENCE_RE = re.compile(r'(?<=[.!?])\s+')
+    _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 
     async def _llm_producer(
         self,
@@ -556,9 +586,9 @@ class ConnectionManager:
             await queue.put(None)
 
         # Send complete assembled message
-        await self.send_message(session_id, {
-            "type": "message", "role": "assistant", "content": full_text
-        })
+        await self.send_message(
+            session_id, {"type": "message", "role": "assistant", "content": full_text}
+        )
         return full_text
 
     async def _animate_from_queue(
@@ -590,10 +620,13 @@ class ConnectionManager:
         # every sentence would be noisy. We reset this in the enclosing turn.
         fallback_announced = False
 
-        await self.send_message(session_id, {
-            "type": "video_chunk_start",
-            "total_chunks": -1,  # streaming mode — total unknown up front
-        })
+        await self.send_message(
+            session_id,
+            {
+                "type": "video_chunk_start",
+                "total_chunks": -1,  # streaming mode — total unknown up front
+            },
+        )
 
         while True:
             sentence = await queue.get()
@@ -609,11 +642,14 @@ class ConnectionManager:
             tmp_video = session_dir / f"{job_id}_video.mp4"
 
             try:
-                await self.send_message(session_id, {
-                    "type": "status",
-                    "message": "Animating…",
-                    "stage": "animation",
-                })
+                await self.send_message(
+                    session_id,
+                    {
+                        "type": "status",
+                        "message": "Animating…",
+                        "stage": "animation",
+                    },
+                )
 
                 synth = await tts_service.synthesize(
                     text=sentence,
@@ -626,16 +662,19 @@ class ConnectionManager:
                 # we ended up serving the un-cloned gTTS voice instead.
                 if synth.fallback and not fallback_announced:
                     fallback_announced = True
-                    await self.send_message(session_id, {
-                        "type": "tts_fallback",
-                        "engine": synth.engine,
-                        "voice_cloned": synth.voice_cloned,
-                        "message": (
-                            "Cloned voice unavailable — using default voice for this reply."
-                            if speaker_wav else
-                            "Voice engine fell back to gTTS for this reply."
-                        ),
-                    })
+                    await self.send_message(
+                        session_id,
+                        {
+                            "type": "tts_fallback",
+                            "engine": synth.engine,
+                            "voice_cloned": synth.voice_cloned,
+                            "message": (
+                                "Cloned voice unavailable — using default voice for this reply."
+                                if speaker_wav
+                                else "Voice engine fell back to gTTS for this reply."
+                            ),
+                        },
+                    )
 
                 await avatar_animator.animate(
                     avatar_image_path=avatar_image,
@@ -649,13 +688,16 @@ class ConnectionManager:
                     tmp_video.read_bytes(), video_key, content_type="video/mp4"
                 )
 
-                await self.send_message(session_id, {
-                    "type": "video_chunk",
-                    "chunk_index": chunk_index,
-                    "total_chunks": -1,
-                    "video_url": video_url,
-                    "text": sentence,
-                })
+                await self.send_message(
+                    session_id,
+                    {
+                        "type": "video_chunk",
+                        "chunk_index": chunk_index,
+                        "total_chunks": -1,
+                        "video_url": video_url,
+                        "text": sentence,
+                    },
+                )
                 chunk_index = chunk_index + 1
                 sent_any = True
                 logger.info(f"Chunk {chunk_index} ready [{session_id}]")
@@ -667,15 +709,19 @@ class ConnectionManager:
                 tmp_audio.unlink(missing_ok=True)
                 tmp_video.unlink(missing_ok=True)
 
-        await self.send_message(session_id, {
-            "type": "video_chunk_end",
-            "sent_chunks": chunk_index,
-        })
+        await self.send_message(
+            session_id,
+            {
+                "type": "video_chunk_end",
+                "sent_chunks": chunk_index,
+            },
+        )
 
         if not sent_any:
-            await self.send_message(session_id, {
-                "type": "error", "message": "Avatar animation failed for all sentences."
-            })
+            await self.send_message(
+                session_id,
+                {"type": "error", "message": "Avatar animation failed for all sentences."},
+            )
 
     # ── helpers ───────────────────────────────────────────────────────────────
 
@@ -717,8 +763,29 @@ class ConnectionManager:
         """Set TTS language for the session. Falls back to 'en' on unknown codes."""
         # Match voices.py allowed list
         allowed = {
-            "ar", "da", "de", "el", "en", "es", "fi", "fr", "he", "hi", "it",
-            "ja", "ko", "ms", "nl", "no", "pl", "pt", "ru", "sv", "sw", "tr", "zh",
+            "ar",
+            "da",
+            "de",
+            "el",
+            "en",
+            "es",
+            "fi",
+            "fr",
+            "he",
+            "hi",
+            "it",
+            "ja",
+            "ko",
+            "ms",
+            "nl",
+            "no",
+            "pl",
+            "pt",
+            "ru",
+            "sv",
+            "sw",
+            "tr",
+            "zh",
         }
         lang = (language or "en").lower()
         if lang not in allowed:

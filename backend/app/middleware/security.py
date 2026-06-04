@@ -23,9 +23,7 @@ logger = logging.getLogger(__name__)
 
 # ContextVar so async tasks spawned during the request (background TTS jobs,
 # DB writes via to_thread, etc.) inherit the correlation id automatically.
-request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "request_id", default="-"
-)
+request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 
 
 def current_request_id() -> str:
@@ -71,9 +69,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # plain-HTTP response will pin a broken policy if the proxy is later
         # misconfigured. Production environments terminate TLS upstream.
         if settings.ENVIRONMENT == "production":
-            response.headers["Strict-Transport-Security"] = (
-                "max-age=31536000; includeSubDomains"
-            )
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         # Modern Spectre/XS-Leaks mitigations
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         response.headers["Cross-Origin-Resource-Policy"] = "same-site"

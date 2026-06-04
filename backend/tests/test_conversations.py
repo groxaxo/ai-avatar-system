@@ -9,7 +9,7 @@ and messages.
 import pytest
 from httpx import AsyncClient
 
-from app.models import Avatar, Session, Conversation, Message
+from app.models import Avatar, Conversation, Message, Session
 
 
 async def _seed_session(db_session, user_id: str, status: str = "active") -> Session:
@@ -33,7 +33,9 @@ async def _seed_session(db_session, user_id: str, status: str = "active") -> Ses
 
 
 @pytest.mark.asyncio
-async def test_list_conversations_scoped_to_user(client: AsyncClient, db_session, test_user, auth_headers):
+async def test_list_conversations_scoped_to_user(
+    client: AsyncClient, db_session, test_user, auth_headers
+):
     """A user only sees conversations belonging to their own sessions."""
     # Own session + conversation
     own = await _seed_session(db_session, test_user.id)
@@ -69,7 +71,9 @@ async def test_rename_conversation(client: AsyncClient, db_session, test_user, a
 
 
 @pytest.mark.asyncio
-async def test_cannot_rename_others_conversation(client: AsyncClient, db_session, test_user, auth_headers):
+async def test_cannot_rename_others_conversation(
+    client: AsyncClient, db_session, test_user, auth_headers
+):
     other = await _seed_session(db_session, "someone-else")
     convo = Conversation(session_id=other.id, title="Theirs", message_count=0)
     db_session.add(convo)
@@ -114,7 +118,9 @@ async def test_message_edit_and_delete(client: AsyncClient, db_session, test_use
 async def test_session_export(client: AsyncClient, db_session, test_user, auth_headers):
     session = await _seed_session(db_session, test_user.id)
     db_session.add(Message(session_id=session.id, role="user", content="hi", content_type="text"))
-    db_session.add(Message(session_id=session.id, role="assistant", content="hello", content_type="text"))
+    db_session.add(
+        Message(session_id=session.id, role="assistant", content="hello", content_type="text")
+    )
     await db_session.commit()
 
     resp = await client.get(f"/api/v1/sessions/{session.id}/export", headers=auth_headers)

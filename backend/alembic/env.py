@@ -6,10 +6,9 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-
 from app.config import settings
 from app.database import Base
-from app.models import User, Avatar, Session, Message, Conversation
+from app.models import Avatar, Conversation, Message, Session, User
 
 config = context.config
 
@@ -20,8 +19,7 @@ target_metadata = Base.metadata
 
 # Override sqlalchemy.url with the async URL from settings
 config.set_main_option(
-    "sqlalchemy.url",
-    settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+    "sqlalchemy.url", settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
 )
 
 

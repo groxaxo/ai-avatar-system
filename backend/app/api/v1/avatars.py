@@ -1,19 +1,19 @@
+import logging
 import tempfile
 import uuid
-import logging
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query, UploadFile, File, Form, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
-from app.models import User, Avatar
-from app.schemas import AvatarResponse, AvatarRename, AvatarMetadataUpdate
-from app.services.storage import storage_service
-from app.services.avatar_processor import avatar_processor
 from app.api.v1.users import get_current_user
+from app.database import get_db
+from app.models import Avatar, User
+from app.schemas import AvatarMetadataUpdate, AvatarRename, AvatarResponse
+from app.services.avatar_processor import avatar_processor
+from app.services.storage import storage_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -62,9 +62,7 @@ async def upload_avatar(
     try:
         temp_orig.write_bytes(file_data)
 
-        _, metadata = await avatar_processor.process_image(
-            str(temp_orig), str(temp_processed)
-        )
+        _, metadata = await avatar_processor.process_image(str(temp_orig), str(temp_processed))
 
         image_key = f"avatars/{avatar_id}/image.jpg"
         image_url = await storage_service.upload_file(
@@ -195,6 +193,7 @@ async def update_avatar_metadata(
     existing: dict = avatar.avatar_metadata or {}
     if isinstance(existing, str):
         import json as _json
+
         try:
             existing = _json.loads(existing)
         except Exception:

@@ -1,28 +1,28 @@
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Query, status
-from sqlalchemy import text, select
+import logging
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from pathlib import Path
+
+from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from contextlib import asynccontextmanager
-from pathlib import Path
-import logging
-from datetime import datetime, timezone
-
 from jose import JWTError, jwt
 from prometheus_fastapi_instrumentator import Instrumentator
+from sqlalchemy import select, text
 
+from app.api.v1 import avatars, conversations, messages, sessions, users, voices
 from app.config import settings
-from app.database import engine, Base, AsyncSessionLocal
-from app.models import User, Session as SessionModel
-from app.api.v1 import avatars, conversations, messages, sessions, users
-from app.api.v1 import voices
-from app.websocket import websocket_manager
-from app.services.storage import storage_service
-from app.services.cache import cache_service
-from app.middleware.rate_limiter import RateLimitMiddleware
-from app.middleware.security import SecurityHeadersMiddleware, RequestLoggingMiddleware
+from app.database import AsyncSessionLocal, Base, engine
 from app.logging_config import configure_logging
+from app.middleware.rate_limiter import RateLimitMiddleware
+from app.middleware.security import RequestLoggingMiddleware, SecurityHeadersMiddleware
+from app.models import Session as SessionModel
+from app.models import User
+from app.services.cache import cache_service
+from app.services.storage import storage_service
+from app.websocket import websocket_manager
 
 # Configure logging FIRST — every import below may log on module load.
 configure_logging()
@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 if settings.SENTRY_DSN:
     try:
         import sentry_sdk
+
         sentry_sdk.init(
             dsn=settings.SENTRY_DSN,
             traces_sample_rate=0.1 if settings.ENVIRONMENT == "production" else 1.0,
@@ -72,13 +73,15 @@ async def lifespan(app: FastAPI):
             async with AsyncSessionLocal() as session:
                 result = await session.execute(select(User).where(User.id == "demo-user"))
                 if result.scalar_one_or_none() is None:
-                    session.add(User(
-                        id="demo-user",
-                        email="demo@localhost",
-                        username="demo",
-                        hashed_password="",  # disabled — login route rejects empty passwords
-                        full_name="Demo User",
-                    ))
+                    session.add(
+                        User(
+                            id="demo-user",
+                            email="demo@localhost",
+                            username="demo",
+                            hashed_password="",  # disabled — login route rejects empty passwords
+                            full_name="Demo User",
+                        )
+                    )
                     await session.commit()
                     logger.info("Demo user created (DEBUG mode)")
         except Exception as e:
@@ -131,12 +134,12 @@ if settings.PROMETHEUS_ENABLED:
     Instrumentator().instrument(app).expose(app)
 
 # Routers
-app.include_router(users.router,         prefix="/api/v1/users",         tags=["users"])
-app.include_router(avatars.router,       prefix="/api/v1/avatars",       tags=["avatars"])
-app.include_router(sessions.router,      prefix="/api/v1/sessions",      tags=["sessions"])
-app.include_router(conversations.router, prefix="/api/v1/conversations",  tags=["conversations"])
-app.include_router(messages.router,      prefix="/api/v1/messages",      tags=["messages"])
-app.include_router(voices.router,        prefix="/api/v1/voices",        tags=["voices"])
+app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
+app.include_router(avatars.router, prefix="/api/v1/avatars", tags=["avatars"])
+app.include_router(sessions.router, prefix="/api/v1/sessions", tags=["sessions"])
+app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["conversations"])
+app.include_router(messages.router, prefix="/api/v1/messages", tags=["messages"])
+app.include_router(voices.router, prefix="/api/v1/voices", tags=["voices"])
 
 
 @app.exception_handler(Exception)
@@ -193,10 +196,11 @@ async def health_check():
     # GPU / avatar engine info
     try:
         import torch
+
         if torch.cuda.is_available():
             props = torch.cuda.get_device_properties(0)
-            used_gb = torch.cuda.memory_allocated(0) / 1024 ** 3
-            total_gb = props.total_memory / 1024 ** 3
+            used_gb = torch.cuda.memory_allocated(0) / 1024**3
+            total_gb = props.total_memory / 1024**3
             services["gpu"] = f"{props.name} ({used_gb:.1f}/{total_gb:.1f} GB used)"
         else:
             services["gpu"] = "not available (CPU mode)"
@@ -208,7 +212,9 @@ async def health_check():
     # LLM provider readiness — checks client wiring + API-key presence, not
     # a live network call (which would cost tokens on every /health hit).
     if settings.LLM_PROVIDER == "anthropic":
-        services["llm"] = "ready (anthropic)" if settings.ANTHROPIC_API_KEY else "missing ANTHROPIC_API_KEY"
+        services["llm"] = (
+            "ready (anthropic)" if settings.ANTHROPIC_API_KEY else "missing ANTHROPIC_API_KEY"
+        )
         if not settings.ANTHROPIC_API_KEY:
             health["status"] = "degraded"
     elif settings.LLM_PROVIDER == "openai":
@@ -223,6 +229,7 @@ async def health_check():
     try:
         from app.services.stt import stt_service
         from app.services.tts import tts_service
+
         services["stt"] = "loaded" if stt_service.model is not None else "lazy (not yet loaded)"
         services["tts"] = "loaded" if tts_service.model is not None else "lazy (not yet loaded)"
     except Exception as e:
@@ -245,9 +252,7 @@ async def _verify_ws_session(session_id: str, token: str | None) -> str | None:
     """
     try:
         async with AsyncSessionLocal() as db:
-            result = await db.execute(
-                select(SessionModel).where(SessionModel.id == session_id)
-            )
+            result = await db.execute(select(SessionModel).where(SessionModel.id == session_id))
             sess = result.scalar_one_or_none()
             if not sess:
                 return None
@@ -304,14 +309,18 @@ async def websocket_endpoint(
             if msg_type == "audio":
                 audio_data = data.get("audio")
                 if not audio_data:
-                    await websocket_manager.send_message(session_id, {"type": "error", "message": "Missing audio data"})
+                    await websocket_manager.send_message(
+                        session_id, {"type": "error", "message": "Missing audio data"}
+                    )
                     continue
                 await websocket_manager.handle_audio_input(session_id, audio_data)
 
             elif msg_type == "text":
                 text_data = data.get("text")
                 if not text_data:
-                    await websocket_manager.send_message(session_id, {"type": "error", "message": "Missing text data"})
+                    await websocket_manager.send_message(
+                        session_id, {"type": "error", "message": "Missing text data"}
+                    )
                     continue
                 await websocket_manager.handle_text_input(session_id, text_data)
 
@@ -324,11 +333,15 @@ async def websocket_endpoint(
                 # Accept voice_id only — never a raw filesystem path from the client.
                 voice_id = data.get("voice_id")
                 if not voice_id or not isinstance(voice_id, str):
-                    await websocket_manager.send_message(session_id, {"type": "error", "message": "Missing voice_id"})
+                    await websocket_manager.send_message(
+                        session_id, {"type": "error", "message": "Missing voice_id"}
+                    )
                     continue
                 ok = await websocket_manager.set_voice_by_id(session_id, voice_id)
                 if not ok:
-                    await websocket_manager.send_message(session_id, {"type": "error", "message": "Voice profile not found"})
+                    await websocket_manager.send_message(
+                        session_id, {"type": "error", "message": "Voice profile not found"}
+                    )
 
             elif msg_type == "set_language":
                 lang = data.get("language", "en")
@@ -347,5 +360,11 @@ async def websocket_endpoint(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000,
-                reload=settings.DEBUG, log_level=settings.LOG_LEVEL.lower())
+
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=settings.DEBUG,
+        log_level=settings.LOG_LEVEL.lower(),
+    )

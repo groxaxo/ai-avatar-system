@@ -1,16 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
 import logging
 from typing import List, Optional
 
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.users import get_current_user
 from app.database import get_db
 from app.models import Conversation, Message, Session, User
 from app.schemas import ConversationResponse
 from app.services.llm import llm_service
-from app.api.v1.users import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -66,12 +66,12 @@ async def get_conversation(
 ):
     """Get conversation by ID (must own parent session)."""
     try:
-        result = await db.execute(
-            select(Conversation).where(Conversation.id == conversation_id)
-        )
+        result = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
         conversation = result.scalar_one_or_none()
         if not conversation:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
+            )
 
         await _get_owned_session(conversation.session_id, _user_id(current_user), db)
         return conversation
@@ -163,12 +163,12 @@ async def rename_conversation(
 ):
     """Rename a conversation."""
     try:
-        result = await db.execute(
-            select(Conversation).where(Conversation.id == conversation_id)
-        )
+        result = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
         conversation = result.scalar_one_or_none()
         if not conversation:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
+            )
 
         await _get_owned_session(conversation.session_id, _user_id(current_user), db)
         conversation.title = payload.title.strip()
@@ -202,12 +202,12 @@ async def summarize_conversation(
     `Conversation.summary`. Idempotent — calling twice just refreshes.
     """
     try:
-        result = await db.execute(
-            select(Conversation).where(Conversation.id == conversation_id)
-        )
+        result = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
         conversation = result.scalar_one_or_none()
         if not conversation:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
+            )
 
         await _get_owned_session(conversation.session_id, _user_id(current_user), db)
 
@@ -242,7 +242,8 @@ async def summarize_conversation(
             "or 'The user'. No preamble.\n\n"
             f"{transcript}"
         )
-        from app.services.llm import LLMRateLimited, LLMAuthError, LLMUnavailable, LLMError
+        from app.services.llm import LLMAuthError, LLMError, LLMRateLimited, LLMUnavailable
+
         try:
             summary = await llm_service.generate_response(
                 messages=[{"role": "user", "content": summary_prompt}],
@@ -294,12 +295,12 @@ async def delete_conversation(
 ):
     """Delete a conversation (must own parent session)."""
     try:
-        result = await db.execute(
-            select(Conversation).where(Conversation.id == conversation_id)
-        )
+        result = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
         conversation = result.scalar_one_or_none()
         if not conversation:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
+            )
 
         await _get_owned_session(conversation.session_id, _user_id(current_user), db)
         await db.delete(conversation)

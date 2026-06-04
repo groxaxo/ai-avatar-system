@@ -32,6 +32,7 @@ class STTService:
     def _check_cuda(self) -> bool:
         try:
             import torch
+
             return torch.cuda.is_available()
         except Exception:
             return False
@@ -39,6 +40,7 @@ class STTService:
     def _build_model(self):
         """Synchronous model load — run inside a thread to avoid blocking the loop."""
         from faster_whisper import WhisperModel
+
         device = "cuda" if self._check_cuda() else "cpu"
         compute_type = "float16" if device == "cuda" else "int8"
         logger.info(f"Loading Whisper model {self.model_name!r} on {device} ({compute_type})…")
@@ -77,6 +79,7 @@ class STTService:
             # Resample to 16 kHz (Whisper's expected rate)
             if sample_rate != 16000:
                 import librosa
+
                 audio = librosa.resample(audio, orig_sr=sample_rate, target_sr=16000)
 
             audio = audio.astype(np.float32)

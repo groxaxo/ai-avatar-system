@@ -14,9 +14,10 @@ make barge-in actually work:
 """
 
 import asyncio
+
 import pytest
 
-from app.websocket import ConnectionManager, MAX_TEXT_INPUT_LEN
+from app.websocket import MAX_TEXT_INPUT_LEN, ConnectionManager
 
 
 class FakeWebSocket:
@@ -136,7 +137,9 @@ async def test_oversized_text_rejected():
     m = ConnectionManager()
     ws = _wire_session(m)
     await m.handle_text_input("s1", "x" * (MAX_TEXT_INPUT_LEN + 1))
-    assert any("too long" in msg.get("message", "").lower() for msg in ws.sent if msg["type"] == "error")
+    assert any(
+        "too long" in msg.get("message", "").lower() for msg in ws.sent if msg["type"] == "error"
+    )
     assert "s1" not in m._active_turns
 
 

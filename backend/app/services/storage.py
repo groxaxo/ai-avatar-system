@@ -25,6 +25,7 @@ def _local_url(key: str) -> str:
 
 # ── Local storage ─────────────────────────────────────────────────────────────
 
+
 class LocalStorageService:
     """Store files on the local filesystem and serve them via /uploads/."""
 
@@ -67,6 +68,7 @@ class LocalStorageService:
 
 # ── S3 storage ────────────────────────────────────────────────────────────────
 
+
 class S3StorageService:
     """AWS S3 storage (used when USE_LOCAL_STORAGE=false)."""
 
@@ -92,6 +94,7 @@ class S3StorageService:
 
     async def initialize(self):
         from botocore.exceptions import ClientError
+
         try:
             async with self.session.client("s3") as s3:
                 try:
@@ -107,9 +110,13 @@ class S3StorageService:
             logger.error(f"Failed to initialise S3: {e}")
             raise
 
-    async def upload_file(self, file_data: bytes, key: str,
-                          content_type: str = "application/octet-stream",
-                          metadata: Optional[dict] = None) -> str:
+    async def upload_file(
+        self,
+        file_data: bytes,
+        key: str,
+        content_type: str = "application/octet-stream",
+        metadata: Optional[dict] = None,
+    ) -> str:
         async with self.session.client("s3") as s3:
             # Private by default — keeps avatar images, voice references, and
             # generated session videos from being world-readable via guessable
@@ -158,6 +165,7 @@ class S3StorageService:
 
 
 # ── Factory ───────────────────────────────────────────────────────────────────
+
 
 def _build_storage_service():
     if getattr(settings, "USE_LOCAL_STORAGE", True):

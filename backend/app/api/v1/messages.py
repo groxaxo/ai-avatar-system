@@ -1,15 +1,15 @@
+import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from pydantic import BaseModel, Field
-import logging
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.users import get_current_user
 from app.database import get_db
 from app.models import Message, Session, User
 from app.schemas import MessageCreate, MessageResponse
-from app.api.v1.users import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -26,7 +26,9 @@ async def _get_owned_session(session_id: str, uid: str, db: AsyncSession) -> Ses
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     if session.user_id != uid:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorised to access this session")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Not authorised to access this session"
+        )
     return session
 
 
@@ -41,7 +43,9 @@ async def send_message(
         session = await _get_owned_session(message_data.session_id, _user_id(current_user), db)
 
         if session.status != "active":
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Session is not active")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Session is not active"
+            )
 
         message = Message(
             session_id=message_data.session_id,
@@ -60,7 +64,9 @@ async def send_message(
         raise
     except Exception as e:
         logger.error(f"Failed to send message: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send message")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send message"
+        )
 
 
 @router.get("/session/{session_id}", response_model=List[MessageResponse])
@@ -88,7 +94,9 @@ async def list_session_messages(
         raise
     except Exception as e:
         logger.error(f"Failed to list messages: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to list messages")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to list messages"
+        )
 
 
 @router.get("/{message_id}", response_model=MessageResponse)
@@ -112,7 +120,9 @@ async def get_message(
         raise
     except Exception as e:
         logger.error(f"Failed to get message: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get message")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get message"
+        )
 
 
 class MessageEditPayload(BaseModel):
@@ -143,7 +153,9 @@ async def edit_message(
     except Exception as e:
         await db.rollback()
         logger.error(f"Failed to edit message: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to edit message")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to edit message"
+        )
 
 
 @router.delete("/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -167,4 +179,6 @@ async def delete_message(
     except Exception as e:
         await db.rollback()
         logger.error(f"Failed to delete message: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete message")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete message"
+        )

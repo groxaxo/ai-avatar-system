@@ -1,8 +1,8 @@
-from pydantic_settings import BaseSettings
-from pydantic import model_validator
-from typing import List, Optional
 from pathlib import Path
-import os
+from typing import List, Optional
+
+from pydantic import model_validator
+from pydantic_settings import BaseSettings
 
 # Resolve .env path relative to this file's location (always project root)
 _ENV_FILE = str(Path(__file__).resolve().parent.parent.parent / ".env")
@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     LOG_LEVEL: str = "INFO"
     SECRET_KEY: str
-    
+
     # Database
     DATABASE_URL: str = "postgresql://avatar_user:password@localhost:5432/avatar_db"
     DATABASE_HOST: str = "localhost"
@@ -25,12 +25,12 @@ class Settings(BaseSettings):
     DATABASE_NAME: str = "avatar_db"
     DATABASE_USER: str = "avatar_user"
     DATABASE_PASSWORD: str = "password"
-    
+
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
-    
+
     # Storage — local by default; set USE_LOCAL_STORAGE=false to use S3
     USE_LOCAL_STORAGE: bool = True
     LOCAL_STORAGE_PATH: str = "uploads"
@@ -41,12 +41,12 @@ class Settings(BaseSettings):
     AWS_REGION: str = "us-east-1"
     S3_BUCKET_NAME: str = "avatar-system-storage"
     CLOUDFRONT_DOMAIN: Optional[str] = None
-    
+
     # API Keys
     ANTHROPIC_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
     ELEVENLABS_API_KEY: Optional[str] = None
-    
+
     # LLM Configuration
     # Anthropic models (2026): claude-opus-4-7 (most capable), claude-sonnet-4-6
     # (balanced — current default), claude-haiku-4-5 (fastest). OpenAI users
@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "claude-sonnet-4-6"
     LLM_TEMPERATURE: float = 0.7
     LLM_MAX_TOKENS: int = 2000
-    
+
     # Avatar Engine
     AVATAR_ENGINE: str = "musetalk"  # musetalk, simple
     AVATAR_RESOLUTION: int = 512
@@ -67,53 +67,58 @@ class Settings(BaseSettings):
     # only ~1% lower WER than large-v3. Falls back to base/small if VRAM is tight.
     STT_PROVIDER: str = "whisper"  # whisper, google, azure
     WHISPER_MODEL: str = "large-v3-turbo"  # tiny, base, small, medium, large-v3, large-v3-turbo
-    
+
     # TTS Configuration
     # chatterbox: Resemble AI's open-source SOTA TTS (default, voice cloning + 23 langs)
     TTS_PROVIDER: str = "chatterbox"
     TTS_VOICE: str = "default"
-    
+
     # Security
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000"]
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_HOURS: int = 24
-    
+
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60
     RATE_LIMIT_PER_HOUR: int = 1000
-    
+
     # WebSocket
     WS_MAX_CONNECTIONS: int = 1000
     WS_PING_INTERVAL: int = 30
     WS_PING_TIMEOUT: int = 10
-    
+
     # Celery
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
-    
+
     # File Upload
     MAX_UPLOAD_SIZE: int = 10485760  # 10MB
     ALLOWED_EXTENSIONS: List[str] = ["jpg", "jpeg", "png", "webp"]
-    
+
     # Video Settings
     VIDEO_FPS: int = 25
     VIDEO_CODEC: str = "h264"
     VIDEO_BITRATE: str = "2000k"
-    
+
     # Monitoring
     SENTRY_DSN: Optional[str] = None
     PROMETHEUS_ENABLED: bool = True
-    
+
     # URLs
     FRONTEND_URL: str = "http://localhost:3000"
     BACKEND_URL: str = "http://localhost:8000"
-    
+
     @model_validator(mode="after")
     def _validate_secrets(self) -> "Settings":
-        for field, value in (("SECRET_KEY", self.SECRET_KEY), ("JWT_SECRET_KEY", self.JWT_SECRET_KEY)):
+        for field, value in (
+            ("SECRET_KEY", self.SECRET_KEY),
+            ("JWT_SECRET_KEY", self.JWT_SECRET_KEY),
+        ):
             if value in _WEAK_SECRETS:
-                raise ValueError(f"{field} is set to an insecure default — set a strong random value in .env")
+                raise ValueError(
+                    f"{field} is set to an insecure default — set a strong random value in .env"
+                )
             if len(value) < 32:
                 raise ValueError(f"{field} must be at least 32 characters")
         return self

@@ -90,7 +90,6 @@ class TTSService:
             and gTTS was used instead — voice cloning is lost in that case.
         """
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        wanted_clone = bool(speaker_wav)
 
         try:
             if self.model is None:
@@ -99,9 +98,7 @@ class TTSService:
             logger.info(f"Synthesizing (chatterbox, lang={language}): {text[:80]}...")
 
             if speaker_wav and not Path(speaker_wav).exists():
-                logger.warning(
-                    f"Speaker WAV not found: {speaker_wav!r} — using default voice"
-                )
+                logger.warning(f"Speaker WAV not found: {speaker_wav!r} — using default voice")
                 speaker_wav = None
 
             kwargs = {"language_id": language}

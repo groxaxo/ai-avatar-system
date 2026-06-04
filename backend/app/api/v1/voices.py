@@ -7,20 +7,20 @@ in unauthenticated dev mode); the list/get/delete endpoints filter by owner so
 users cannot see or mutate someone else's voices.
 """
 
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
-from fastapi.responses import FileResponse, JSONResponse, Response
 import asyncio
-import subprocess
-import uuid
+import io
 import json
 import logging
+import subprocess
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
-import soundfile as sf
-import io
 
-from sqlalchemy import select, update
+import soundfile as sf
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response
+from sqlalchemy import update
 
 from app.api.v1.users import get_current_user
 from app.models import User
@@ -46,8 +46,29 @@ MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB hard cap
 # Chatterbox Multilingual supports 23 languages — keep this in sync with
 # https://www.resemble.ai/introducing-chatterbox-multilingual-open-source-tts-for-23-languages/
 _ALLOWED_LANGUAGES = {
-    "ar", "da", "de", "el", "en", "es", "fi", "fr", "he", "hi", "it", "ja",
-    "ko", "ms", "nl", "no", "pl", "pt", "ru", "sv", "sw", "tr", "zh",
+    "ar",
+    "da",
+    "de",
+    "el",
+    "en",
+    "es",
+    "fi",
+    "fr",
+    "he",
+    "hi",
+    "it",
+    "ja",
+    "ko",
+    "ms",
+    "nl",
+    "no",
+    "pl",
+    "pt",
+    "ru",
+    "sv",
+    "sw",
+    "tr",
+    "zh",
 }
 _NAME_MAX_LEN = 100
 
@@ -128,20 +149,36 @@ async def clone_voice(
                 await asyncio.to_thread(
                     subprocess.run,
                     # 24kHz mono — matches Chatterbox's recommended reference format
-                    ["ffmpeg", "-y", "-i", str(raw_path), "-ar", "24000", "-ac", "1", str(wav_path)],
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(raw_path),
+                        "-ar",
+                        "24000",
+                        "-ac",
+                        "1",
+                        str(wav_path),
+                    ],
                     capture_output=True,
                     check=True,
                     timeout=30,
                 )
                 raw_path.unlink(missing_ok=True)
             except subprocess.CalledProcessError as e:
-                logger.warning(f"ffmpeg conversion failed for {voice_id}: {e.stderr.decode(errors='replace')}")
+                logger.warning(
+                    f"ffmpeg conversion failed for {voice_id}: {e.stderr.decode(errors='replace')}"
+                )
                 raw_path.unlink(missing_ok=True)
-                raise HTTPException(status_code=422, detail="Could not decode audio. Please upload WAV or WebM.")
+                raise HTTPException(
+                    status_code=422, detail="Could not decode audio. Please upload WAV or WebM."
+                )
             except Exception as ffmpeg_err:
                 logger.warning(f"ffmpeg error for {voice_id}: {ffmpeg_err}")
                 raw_path.unlink(missing_ok=True)
-                raise HTTPException(status_code=422, detail="Could not decode audio. Please upload WAV or WebM.")
+                raise HTTPException(
+                    status_code=422, detail="Could not decode audio. Please upload WAV or WebM."
+                )
 
         # Validate the output WAV is actually readable
         try:
@@ -150,26 +187,25 @@ async def clone_voice(
         except Exception as e:
             wav_path.unlink(missing_ok=True)
             raise HTTPException(
-                status_code=422,
-                detail=f"Converted audio file is not a valid WAV: {e}"
+                status_code=422, detail=f"Converted audio file is not a valid WAV: {e}"
             )
 
         if duration < MIN_DURATION_SECS:
             wav_path.unlink(missing_ok=True)
             raise HTTPException(
                 status_code=400,
-                detail=f"Sample too short ({duration}s). Please record at least {MIN_DURATION_SECS} seconds."
+                detail=f"Sample too short ({duration}s). Please record at least {MIN_DURATION_SECS} seconds.",
             )
         if duration > MAX_DURATION_SECS:
             wav_path.unlink(missing_ok=True)
             raise HTTPException(
                 status_code=400,
-                detail=f"Sample too long ({duration}s). Maximum {MAX_DURATION_SECS} seconds allowed."
+                detail=f"Sample too long ({duration}s). Maximum {MAX_DURATION_SECS} seconds allowed.",
             )
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Voice cloning storage error")
         raise HTTPException(status_code=500, detail="Failed to process audio")
 
@@ -189,13 +225,15 @@ async def clone_voice(
     await _save_index(index)
 
     logger.info(f"Voice profile created: {name!r} ({voice_id}, {duration}s, user={uid})")
-    return JSONResponse({
-        "id": voice_id,
-        "name": name,
-        "language": lang,
-        "duration": duration,
-        "created_at": entry["created_at"],
-    })
+    return JSONResponse(
+        {
+            "id": voice_id,
+            "name": name,
+            "language": lang,
+            "duration": duration,
+            "created_at": entry["created_at"],
+        }
+    )
 
 
 @router.get("/")
@@ -268,6 +306,7 @@ async def synthesize_voice_preview(
 
     try:
         from app.services.tts import tts_service
+
         audio_bytes = await tts_service.synthesize_bytes(
             text=sample_text,
             speaker_wav=wav_path,
@@ -331,11 +370,10 @@ async def delete_voice(
     try:
         from app.database import AsyncSessionLocal
         from app.models import Avatar
+
         async with AsyncSessionLocal() as db:
             result = await db.execute(
-                update(Avatar)
-                .where(Avatar.voice_id == voice_id)
-                .values(voice_id=None)
+                update(Avatar).where(Avatar.voice_id == voice_id).values(voice_id=None)
             )
             cleared = result.rowcount or 0
             await db.commit()

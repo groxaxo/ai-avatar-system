@@ -8,13 +8,13 @@ one test can't collide with the same fixture in the next.
 """
 
 import pytest
-from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.api.v1.users import create_access_token, get_password_hash
 from app.database import Base, get_db
 from app.models import User  # noqa: F401 — ensures models are registered on Base
-from app.api.v1.users import get_password_hash, create_access_token
 from main import app
 
 # Pure in-memory DB — no file on disk, fully isolated per engine instance.
@@ -50,6 +50,7 @@ async def db_session(test_engine):
 @pytest.fixture
 async def client(db_session):
     """Async test client with the DB dependency overridden to the test session."""
+
     async def override_get_db():
         yield db_session
 

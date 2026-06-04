@@ -1,17 +1,17 @@
+import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-import logging
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.users import get_current_user
 from app.database import get_db
-from app.models import Session, Avatar, Message, User
+from app.models import Avatar, Message, Session, User
 from app.schemas import SessionCreate, SessionResponse
 from app.websocket import websocket_manager
-from app.api.v1.users import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -36,12 +36,16 @@ async def create_session(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Avatar not found")
 
         if avatar.status != "ready":
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Avatar is not ready")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Avatar is not ready"
+            )
 
         # Ensure user owns this avatar (or is demo)
         uid = _user_id(current_user)
         if avatar.user_id != uid:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorised to use this avatar")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Not authorised to use this avatar"
+            )
 
         session = Session(
             user_id=uid,
@@ -61,7 +65,9 @@ async def create_session(
         raise
     except Exception as e:
         logger.error(f"Failed to create session: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create session")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create session"
+        )
 
 
 @router.get("/", response_model=List[SessionResponse])
@@ -83,7 +89,9 @@ async def list_sessions(
         return result.scalars().all()
     except Exception as e:
         logger.error(f"Failed to list sessions: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to list sessions")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to list sessions"
+        )
 
 
 @router.get("/{session_id}", response_model=SessionResponse)
@@ -101,14 +109,19 @@ async def get_session(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
         if session.user_id != _user_id(current_user):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorised to access this session")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorised to access this session",
+            )
 
         return session
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to get session: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get session")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get session"
+        )
 
 
 @router.post("/{session_id}/end", response_model=SessionResponse)
@@ -126,7 +139,9 @@ async def end_session(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
         if session.user_id != _user_id(current_user):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorised to end this session")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Not authorised to end this session"
+            )
 
         session.status = "ended"
         session.ended_at = datetime.now(timezone.utc)
@@ -143,7 +158,9 @@ async def end_session(
         raise
     except Exception as e:
         logger.error(f"Failed to end session: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to end session")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to end session"
+        )
 
 
 _EXPORT_MAX_MESSAGES = 5000
@@ -235,7 +252,10 @@ async def delete_session(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
         if session.user_id != _user_id(current_user):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorised to delete this session")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorised to delete this session",
+            )
 
         await db.delete(session)
         await db.commit()
@@ -246,4 +266,6 @@ async def delete_session(
     except Exception as e:
         await db.rollback()
         logger.error(f"Failed to delete session: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete session")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete session"
+        )

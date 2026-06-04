@@ -3,10 +3,8 @@ import hashlib
 import json
 import logging
 import os
-import shutil
 import sys
 import tempfile
-import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -61,9 +59,7 @@ class AvatarAnimator:
             return
 
         if self.engine == "musetalk":
-            self._musetalk_dir = self._find_dir(
-                settings.MUSETALK_PATH, "scripts/inference.py"
-            )
+            self._musetalk_dir = self._find_dir(settings.MUSETALK_PATH, "scripts/inference.py")
             if self._musetalk_dir is None:
                 logger.warning(
                     "MuseTalk not found at '%s'. "
@@ -77,8 +73,8 @@ class AvatarAnimator:
                 # Build env once
                 existing = os.environ.get("PYTHONPATH", "")
                 self._worker_env = os.environ.copy()
-                self._worker_env["PYTHONPATH"] = (
-                    str(self._musetalk_dir) + (":" + existing if existing else "")
+                self._worker_env["PYTHONPATH"] = str(self._musetalk_dir) + (
+                    ":" + existing if existing else ""
                 )
 
         elif self.engine not in ("simple",):
@@ -109,7 +105,8 @@ class AvatarAnimator:
 
         logger.info("Starting persistent MuseTalk worker (loading models once)…")
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, str(worker_script),
+            sys.executable,
+            str(worker_script),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -118,13 +115,18 @@ class AvatarAnimator:
         )
 
         # Send init config — include float16 flag so worker can optimise for GPU
-        init_msg = json.dumps({
-            "unet_model_path": str(musetalk_dir / "models" / "musetalkV15" / "unet.pth"),
-            "unet_config":     str(musetalk_dir / "models" / "musetalkV15" / "musetalk.json"),
-            "whisper_dir":     str(musetalk_dir / "models" / "whisper"),
-            "vae_type":        str(musetalk_dir / "models" / "sd-vae"),
-            "use_float16":     self.use_float16,
-        }) + "\n"
+        init_msg = (
+            json.dumps(
+                {
+                    "unet_model_path": str(musetalk_dir / "models" / "musetalkV15" / "unet.pth"),
+                    "unet_config": str(musetalk_dir / "models" / "musetalkV15" / "musetalk.json"),
+                    "whisper_dir": str(musetalk_dir / "models" / "whisper"),
+                    "vae_type": str(musetalk_dir / "models" / "sd-vae"),
+                    "use_float16": self.use_float16,
+                }
+            )
+            + "\n"
+        )
         proc.stdin.write(init_msg.encode())
         await proc.stdin.drain()
 
@@ -148,18 +150,24 @@ class AvatarAnimator:
         self._worker_proc = proc
         return proc
 
-    async def _worker_infer(self, image_path: str, audio_path: str,
-                             output_path: str, coord_cache: Optional[str]) -> str:
+    async def _worker_infer(
+        self, image_path: str, audio_path: str, output_path: str, coord_cache: Optional[str]
+    ) -> str:
         """Send one job to the persistent worker and await its result."""
         async with self._worker_lock:
             proc = await self._ensure_worker()
 
-            job = json.dumps({
-                "image":       str(Path(image_path).resolve()),
-                "audio":       str(Path(audio_path).resolve()),
-                "output":      str(Path(output_path).resolve()),
-                "coord_cache": coord_cache,
-            }) + "\n"
+            job = (
+                json.dumps(
+                    {
+                        "image": str(Path(image_path).resolve()),
+                        "audio": str(Path(audio_path).resolve()),
+                        "output": str(Path(output_path).resolve()),
+                        "coord_cache": coord_cache,
+                    }
+                )
+                + "\n"
+            )
 
             proc.stdin.write(job.encode())
             await proc.stdin.drain()
@@ -167,15 +175,11 @@ class AvatarAnimator:
             # GPU: expect ~5-15s per sentence; CPU: up to 5 min
             infer_timeout = 60 if self.device == "cuda" else 300
             try:
-                result_line = await asyncio.wait_for(
-                    proc.stdout.readline(), timeout=infer_timeout
-                )
+                result_line = await asyncio.wait_for(proc.stdout.readline(), timeout=infer_timeout)
             except asyncio.TimeoutError:
                 proc.kill()
                 self._worker_proc = None
-                raise RuntimeError(
-                    f"MuseTalk inference timed out after {infer_timeout}s"
-                )
+                raise RuntimeError(f"MuseTalk inference timed out after {infer_timeout}s")
 
             result = json.loads(result_line.decode().strip())
             if result["status"] != "ok":
@@ -244,16 +248,27 @@ class AvatarAnimator:
         logger.info("Using simple animation (static image + audio, no lip-sync)")
 
         cmd = [
-            "ffmpeg", "-y",
-            "-loop", "1", "-i", str(avatar_path),
-            "-i", str(audio_path),
-            "-c:v", "libx264",
-            "-tune", "stillimage",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            "-pix_fmt", "yuv420p",
+            "ffmpeg",
+            "-y",
+            "-loop",
+            "1",
+            "-i",
+            str(avatar_path),
+            "-i",
+            str(audio_path),
+            "-c:v",
+            "libx264",
+            "-tune",
+            "stillimage",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-pix_fmt",
+            "yuv420p",
             "-shortest",
-            "-vf", (
+            "-vf",
+            (
                 f"fps={self.fps},"
                 f"scale={self.resolution}:{self.resolution}:"
                 f"force_original_aspect_ratio=decrease,"

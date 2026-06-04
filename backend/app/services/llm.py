@@ -74,7 +74,10 @@ def _map_anthropic_exception(exc: Exception) -> LLMError:
         return LLMRateLimited(str(exc))
     if isinstance(exc, (anthropic.AuthenticationError, anthropic.PermissionDeniedError)):
         return LLMAuthError(str(exc))
-    if isinstance(exc, (anthropic.APITimeoutError, anthropic.APIConnectionError, anthropic.InternalServerError)):
+    if isinstance(
+        exc,
+        (anthropic.APITimeoutError, anthropic.APIConnectionError, anthropic.InternalServerError),
+    ):
         return LLMUnavailable(str(exc))
     if isinstance(exc, anthropic.BadRequestError):
         # 400 from Anthropic is usually our bug, not theirs — surface verbatim.
@@ -87,7 +90,9 @@ def _map_openai_exception(exc: Exception) -> LLMError:
         return LLMRateLimited(str(exc))
     if isinstance(exc, (openai.AuthenticationError, openai.PermissionDeniedError)):
         return LLMAuthError(str(exc))
-    if isinstance(exc, (openai.APITimeoutError, openai.APIConnectionError, openai.InternalServerError)):
+    if isinstance(
+        exc, (openai.APITimeoutError, openai.APIConnectionError, openai.InternalServerError)
+    ):
         return LLMUnavailable(str(exc))
     return LLMError(str(exc))
 

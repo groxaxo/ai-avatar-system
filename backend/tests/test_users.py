@@ -112,8 +112,8 @@ async def test_list_users_forbidden_for_non_superuser(client: AsyncClient, auth_
 @pytest.mark.asyncio
 async def test_list_users_superuser_ok(client: AsyncClient, db_session):
     """A superuser can list all users (200)."""
+    from app.api.v1.users import create_access_token, get_password_hash
     from app.models import User
-    from app.api.v1.users import get_password_hash, create_access_token
 
     admin = User(
         email="admin@example.com",

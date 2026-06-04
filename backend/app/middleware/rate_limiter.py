@@ -21,7 +21,7 @@ import time
 from collections import defaultdict
 from typing import Callable, Optional
 
-from fastapi import Request, Response, HTTPException, status
+from fastapi import HTTPException, Request, Response, status
 from jose import JWTError, jwt
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -151,8 +151,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     def _consume_local(self, identity: str) -> tuple[int, int]:
         now = time.time()
-        minute = self._minute_buckets[identity] = [t for t in self._minute_buckets[identity] if now - t < 60]
-        hour = self._hour_buckets[identity] = [t for t in self._hour_buckets[identity] if now - t < 3600]
+        minute = self._minute_buckets[identity] = [
+            t for t in self._minute_buckets[identity] if now - t < 60
+        ]
+        hour = self._hour_buckets[identity] = [
+            t for t in self._hour_buckets[identity] if now - t < 3600
+        ]
 
         if len(minute) >= self.rate_per_minute:
             logger.warning(f"Rate limit exceeded (minute, local) for {identity}")

@@ -1,6 +1,7 @@
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, Optional
+
+from pydantic import BaseModel, EmailStr, Field
 
 
 # User Schemas
@@ -111,6 +112,7 @@ class AvatarMetadataUpdate(BaseModel):
     the JSON column (which would otherwise let them shadow internal flags or
     bloat the row).
     """
+
     system_prompt: Optional[str] = Field(default=None, max_length=8000)
     personality: Optional[str] = Field(default=None, max_length=2000)
     background_color: Optional[str] = Field(default=None, max_length=32)

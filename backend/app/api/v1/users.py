@@ -1,17 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from jose import JWTError, jwt
-import bcrypt
-from datetime import datetime, timedelta, timezone
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
+import bcrypt
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jose import JWTError, jwt
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import settings
 from app.database import get_db
 from app.models import User
-from app.schemas import UserCreate, UserUpdate, UserResponse, Token
-from app.config import settings
+from app.schemas import Token, UserCreate, UserResponse, UserUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -51,14 +52,15 @@ def get_password_hash(password: str) -> str:
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(hours=settings.JWT_EXPIRATION_HOURS))
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(hours=settings.JWT_EXPIRATION_HOURS)
+    )
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
 async def get_current_user(
-    token: Optional[str] = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db)
+    token: Optional[str] = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)
 ) -> Optional[User]:
     """Get current authenticated user, or None if no token"""
     if token is None:
@@ -86,34 +88,26 @@ async def require_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Inactive user"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
     return user
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register_user(
-    user_data: UserCreate,
-    db: AsyncSession = Depends(get_db)
-):
+async def register_user(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     """Register a new user"""
     try:
         # Check if email already exists
         result = await db.execute(select(User).where(User.email == user_data.email))
         if result.scalar_one_or_none():
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Email already registered"
+                status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
             )
 
         # Check if username already exists
         result = await db.execute(select(User).where(User.username == user_data.username))
         if result.scalar_one_or_none():
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Username already taken"
+                status_code=status.HTTP_409_CONFLICT, detail="Username already taken"
             )
 
         user = User(
@@ -135,15 +129,13 @@ async def register_user(
     except Exception as e:
         logger.error(f"Failed to register user: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to register user"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to register user"
         )
 
 
 @router.post("/login", response_model=Token)
 async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: AsyncSession = Depends(get_db)
+    form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)
 ):
     """Login and get access token"""
     try:
@@ -152,7 +144,12 @@ async def login(
 
         # Reject empty passwords explicitly — the demo user is seeded with an
         # empty hash and would otherwise become a passwordless backdoor.
-        if not form_data.password or not user or not user.hashed_password or not verify_password(form_data.password, user.hashed_password):
+        if (
+            not form_data.password
+            or not user
+            or not user.hashed_password
+            or not verify_password(form_data.password, user.hashed_password)
+        ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect email or password",
@@ -160,10 +157,7 @@ async def login(
             )
 
         if not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Inactive user"
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
 
         access_token = create_access_token(data={"sub": user.id})
         return Token(access_token=access_token, token_type="bearer")
@@ -173,15 +167,12 @@ async def login(
     except Exception as e:
         logger.error(f"Login failed: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Login failed"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Login failed"
         )
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user_profile(
-    user: User = Depends(require_current_user)
-):
+async def get_current_user_profile(user: User = Depends(require_current_user)):
     """Get current user profile"""
     return user
 
@@ -190,7 +181,7 @@ async def get_current_user_profile(
 async def update_current_user(
     update_data: UserUpdate,
     user: User = Depends(require_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Update current user profile"""
     try:
@@ -200,8 +191,7 @@ async def update_current_user(
             )
             if result.scalar_one_or_none():
                 raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Email already registered"
+                    status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
                 )
             user.email = update_data.email
 
@@ -211,8 +201,7 @@ async def update_current_user(
             )
             if result.scalar_one_or_none():
                 raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Username already taken"
+                    status_code=status.HTTP_409_CONFLICT, detail="Username already taken"
                 )
             user.username = update_data.username
 
@@ -233,8 +222,7 @@ async def update_current_user(
     except Exception as e:
         logger.error(f"Failed to update user: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update user"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update user"
         )
 
 
@@ -243,25 +231,19 @@ async def list_users(
     skip: int = 0,
     limit: int = 100,
     current_user: User = Depends(require_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """List all users — superuser only"""
     if not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     try:
-        result = await db.execute(
-            select(User).offset(skip).limit(min(limit, 200))
-        )
+        result = await db.execute(select(User).offset(skip).limit(min(limit, 200)))
         return result.scalars().all()
 
     except Exception as e:
         logger.error(f"Failed to list users: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to list users"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to list users"
         )
 
 
@@ -269,23 +251,17 @@ async def list_users(
 async def get_user(
     user_id: str,
     current_user: User = Depends(require_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """Get user by ID — own profile or superuser only"""
     if str(current_user.id) != user_id and not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     try:
         result = await db.execute(select(User).where(User.id == user_id))
         user = result.scalar_one_or_none()
 
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
         return user
 
@@ -294,6 +270,5 @@ async def get_user(
     except Exception as e:
         logger.error(f"Failed to get user: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get user"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get user"
         )

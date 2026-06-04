@@ -1,8 +1,21 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, JSON, Float, Index
+import uuid
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+
 from app.database import Base
-import uuid
 
 
 def generate_uuid():
@@ -40,7 +53,9 @@ class Avatar(Base):
     thumbnail_url = Column(String, nullable=True)
     s3_key = Column(String, nullable=False)
     status = Column(String, default="processing")  # processing, ready, failed
-    voice_id = Column(String, nullable=True, index=True)  # so voice-deletion clears references quickly
+    voice_id = Column(
+        String, nullable=True, index=True
+    )  # so voice-deletion clears references quickly
     avatar_metadata = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
