@@ -81,7 +81,7 @@ export function SettingsPanel() {
         <div className="card-glow mb-6 flex items-start gap-3">
           <User size={16} className="text-amber-400 mt-0.5 flex-shrink-0" />
           <div>
-            <p className="text-sm text-white font-semibold">You're signed in as a guest.</p>
+            <p className="text-sm text-white font-semibold">You&apos;re signed in as a guest.</p>
             <p className="text-xs text-gray-400 mt-1">Sign out and register an account to save your profile and access multi-device sync.</p>
           </div>
         </div>

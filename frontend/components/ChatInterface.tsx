@@ -65,6 +65,11 @@ const EMOTION_CONFIG: Record<string, { label: string; color: string; bg: string 
   neutral: { label: '😊 Neutral', color: 'text-gray-300',   bg: 'bg-gray-500/20 border-gray-500/30' },
 }
 
+// Deterministic per-bar heights — a static varied pattern instead of
+// Math.random() (which is impure in render and jitters on every re-render).
+// The CSS `waveform` animation supplies the live motion when `active`.
+const _WAVE_HEIGHTS = [10, 18, 8, 22, 14, 20, 6, 16]
+
 function WaveformBars({ active }: { active: boolean }) {
   return (
     <div className="flex items-center gap-0.5 h-6">
@@ -73,7 +78,7 @@ function WaveformBars({ active }: { active: boolean }) {
           key={i}
           className="w-1 rounded-full"
           style={{
-            height: active ? `${Math.random() * 20 + 4}px` : '4px',
+            height: active ? `${_WAVE_HEIGHTS[i]}px` : '4px',
             background: 'linear-gradient(to top, #7c3aed, #3b82f6)',
             transition: 'height 0.15s ease',
             animation: active ? 'waveform 1.2s ease-in-out infinite' : 'none',

@@ -574,7 +574,9 @@ export function VoicePanel({ onVoiceSelect }: VoicePanelProps = {}) {
                     <div
                       key={i}
                       className="w-0.5 rounded-full bg-primary-500/60"
-                      style={{ height: `${Math.random() * 20 + 4}px` }}
+                      // Deterministic static waveform — a smooth sine pattern
+                      // instead of impure Math.random() in render.
+                      style={{ height: `${4 + Math.round(Math.abs(Math.sin(i * 0.6)) * 20)}px` }}
                     />
                   ))}
                 </div>
@@ -647,7 +649,7 @@ export function VoicePanel({ onVoiceSelect }: VoicePanelProps = {}) {
             <p className="text-sm font-semibold text-white mb-1">How voice cloning works</p>
             <p className="text-xs text-gray-500 leading-relaxed">
               Record 10–60 seconds of your voice reading naturally. Chatterbox Multilingual extracts a
-              speaker embedding and applies it as the avatar's voice during TTS synthesis. 23 languages supported.
+              speaker embedding and applies it as the avatar&apos;s voice during TTS synthesis. 23 languages supported.
             </p>
           </div>
         </div>

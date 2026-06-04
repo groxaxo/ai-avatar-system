@@ -34,7 +34,6 @@ function report(v: Vital): void {
   // In dev, log to console. Replace with `fetch('/api/v1/analytics/vitals', …)`
   // when you have an analytics endpoint.
   if (process.env.NODE_ENV !== 'production') {
-    // eslint-disable-next-line no-console
     console.info(`[vitals] ${v.name}=${v.value.toFixed(2)} (${v.rating})`)
   }
 }
