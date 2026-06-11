@@ -95,8 +95,10 @@ jobs:
       CELERY_RESULT_BACKEND: redis://localhost:6379/2
       ENVIRONMENT: testing
       DEBUG: 'false'
-      SECRET_KEY: test-secret-key
-      JWT_SECRET_KEY: test-jwt-secret
+      # Settings enforces >=32 chars — shorter values fail validation at
+      # import time and abort the entire test session.
+      SECRET_KEY: ci-only-secret-key-0123456789abcdef0123456789abcdef
+      JWT_SECRET_KEY: ci-only-jwt-secret-0123456789abcdef0123456789abcdef
     steps:
       - uses: actions/checkout@v4
 

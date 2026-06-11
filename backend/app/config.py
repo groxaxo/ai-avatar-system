@@ -1,7 +1,7 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 # Resolve .env path relative to this file's location (always project root)
@@ -74,7 +74,11 @@ class Settings(BaseSettings):
     TTS_VOICE: str = "default"
 
     # Security
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000"]
+    # Union[..., str] lets pydantic-settings keep a non-JSON env value as a
+    # raw string instead of failing the JSON parse, so both formats work:
+    #   CORS_ORIGINS=["http://a","http://b"]   (JSON)
+    #   CORS_ORIGINS=http://a,http://b         (comma-separated)
+    CORS_ORIGINS: Union[List[str], str] = ["http://localhost:3000", "http://localhost:8000"]
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_HOURS: int = 24
@@ -103,7 +107,7 @@ class Settings(BaseSettings):
 
     # File Upload
     MAX_UPLOAD_SIZE: int = 10485760  # 10MB
-    ALLOWED_EXTENSIONS: List[str] = ["jpg", "jpeg", "png", "webp"]
+    ALLOWED_EXTENSIONS: Union[List[str], str] = ["jpg", "jpeg", "png", "webp"]
 
     # Video Settings
     VIDEO_FPS: int = 25
@@ -126,6 +130,14 @@ class Settings(BaseSettings):
     # URLs
     FRONTEND_URL: str = "http://localhost:3000"
     BACKEND_URL: str = "http://localhost:8000"
+
+    @field_validator("CORS_ORIGINS", "ALLOWED_EXTENSIONS", mode="before")
+    @classmethod
+    def _split_comma_separated(cls, value):
+        """Accept comma-separated env strings (.env.example style) as lists."""
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
 
     @model_validator(mode="after")
     def _validate_secrets(self) -> "Settings":
