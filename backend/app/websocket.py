@@ -749,7 +749,7 @@ class ConnectionManager:
                             "message": (
                                 "Cloned voice unavailable — using default voice for this reply."
                                 if speaker_wav
-                                else "Voice engine fell back to gTTS for this reply."
+                                else f"Voice engine fell back to {synth.engine} for this reply."
                             ),
                         },
                     )

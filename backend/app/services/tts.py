@@ -4,8 +4,13 @@ Text-to-Speech service backed by Chatterbox Multilingual (Resemble AI).
 Replaces the deprecated Coqui XTTS v2. Voice profile WAVs in `voice_profiles/`
 remain compatible — Chatterbox accepts any WAV reference for zero-shot cloning.
 
-Falls back to Google TTS (gTTS) if model loading or synthesis fails so the
-chat pipeline degrades gracefully rather than 500ing the whole turn.
+Fallback chain when Chatterbox can't load or fails mid-synthesis:
+
+    chatterbox (cloned voice, GPU) → edge-tts (neural, free, no GPU) → gTTS
+
+Edge TTS uses Microsoft's neural voices — dramatically better prosody than
+gTTS — and needs no API key or GPU, so the degraded experience stays good.
+gTTS remains as the last-ditch network fallback.
 
 Synthesis result reports which engine produced the audio so the caller can
 notify the user when voice cloning was silently dropped during fallback.
@@ -33,11 +38,52 @@ class SynthResult:
     voice_cloned: bool  # True if a speaker WAV was actually applied
 
 
+# Microsoft neural voices for the Edge TTS fallback, one per supported
+# language (the same 23-language set the voices API allows). Anything not
+# listed falls back to the English voice.
+_EDGE_VOICES = {
+    "ar": "ar-SA-ZariyahNeural",
+    "da": "da-DK-ChristelNeural",
+    "de": "de-DE-KatjaNeural",
+    "el": "el-GR-AthinaNeural",
+    "en": "en-US-AriaNeural",
+    "es": "es-ES-ElviraNeural",
+    "fi": "fi-FI-NooraNeural",
+    "fr": "fr-FR-DeniseNeural",
+    "he": "he-IL-HilaNeural",
+    "hi": "hi-IN-SwaraNeural",
+    "it": "it-IT-ElsaNeural",
+    "ja": "ja-JP-NanamiNeural",
+    "ko": "ko-KR-SunHiNeural",
+    "ms": "ms-MY-YasminNeural",
+    "nl": "nl-NL-ColetteNeural",
+    "no": "nb-NO-PernilleNeural",
+    "pl": "pl-PL-ZofiaNeural",
+    "pt": "pt-BR-FranciscaNeural",
+    "ru": "ru-RU-SvetlanaNeural",
+    "sv": "sv-SE-SofieNeural",
+    "sw": "sw-KE-ZuriNeural",
+    "tr": "tr-TR-EmelNeural",
+    "zh": "zh-CN-XiaoxiaoNeural",
+}
+
+# Older configs may still say "coqui"/"xtts" (the engine Chatterbox replaced).
+# Treat them as chatterbox instead of breaking every synthesis call.
+_LEGACY_PROVIDER_ALIASES = {"coqui": "chatterbox", "xtts": "chatterbox", "xtts_v2": "chatterbox"}
+
+
 class TTSService:
     """Text-to-Speech service. Lazy-loads the model on first synthesis."""
 
     def __init__(self):
-        self.provider = settings.TTS_PROVIDER
+        provider = settings.TTS_PROVIDER
+        if provider in _LEGACY_PROVIDER_ALIASES:
+            logger.warning(
+                f"TTS_PROVIDER={provider!r} is deprecated (Coqui XTTS was replaced "
+                f"by Chatterbox) — using 'chatterbox'. Update your .env."
+            )
+            provider = _LEGACY_PROVIDER_ALIASES[provider]
+        self.provider = provider
         self.model = None
 
     def _check_cuda(self) -> bool:
@@ -122,17 +168,45 @@ class TTSService:
             if speaker_wav:
                 logger.warning(
                     f"Chatterbox voice-clone failed — cloned voice NOT applied, "
-                    f"falling back to gTTS default. Error: {e}"
+                    f"falling back to a default neural voice. Error: {e}"
                 )
             else:
-                logger.warning(f"Chatterbox failed ({e}), falling back to gTTS")
-            await self._gtts_fallback(text, output_path, language)
+                logger.warning(f"Chatterbox failed ({e}), trying Edge TTS fallback")
+
+            # Prefer Edge TTS (Microsoft neural voices — much better prosody
+            # than gTTS, still free and CPU-only); gTTS is the last resort.
+            try:
+                await self._edge_fallback(text, output_path, language)
+                engine = "edge-tts"
+            except Exception as edge_err:
+                logger.warning(f"Edge TTS failed ({edge_err}), falling back to gTTS")
+                await self._gtts_fallback(text, output_path, language)
+                engine = "gtts"
+
             return SynthResult(
                 output_path=output_path,
-                engine="gtts",
+                engine=engine,
                 fallback=True,
                 voice_cloned=False,
             )
+
+    async def _edge_fallback(self, text: str, output_path: str, language: str = "en") -> str:
+        """Free neural-voice fallback via Microsoft Edge TTS (no key, no GPU)."""
+        import edge_tts
+        from pydub import AudioSegment
+
+        voice = _EDGE_VOICES.get(language, _EDGE_VOICES["en"])
+        logger.info(f"Synthesizing (edge-tts, {voice}): {text[:80]}...")
+        mp3_path = output_path.replace(".wav", "_edge.mp3")
+
+        await edge_tts.Communicate(text, voice).save(mp3_path)
+        await asyncio.to_thread(
+            lambda: AudioSegment.from_mp3(mp3_path).export(output_path, format="wav")
+        )
+        Path(mp3_path).unlink(missing_ok=True)
+
+        logger.info(f"Edge TTS synthesis complete: {output_path}")
+        return output_path
 
     async def _gtts_fallback(self, text: str, output_path: str, language: str = "en") -> str:
         """Network-only fallback using Google TTS — no GPU/local model required."""

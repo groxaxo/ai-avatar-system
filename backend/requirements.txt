@@ -53,6 +53,9 @@ faster-whisper>=1.0.0
 # (en, es, fr, de, it, pt, pl, tr, ru, nl, ar, zh, ja, ko, da, el, fi, he, hi,
 # ms, no, sv, sw). Replaces deprecated Coqui XTTS v2.
 chatterbox-tts>=0.1.4
+# Edge TTS — free Microsoft neural voices used as the first fallback when
+# Chatterbox is unavailable (no API key, no GPU). gTTS remains the last resort.
+edge-tts>=6.1.0
 gtts==2.5.1
 pydub==0.25.1
 
