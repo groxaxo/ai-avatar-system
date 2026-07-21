@@ -25,8 +25,9 @@ async def test_health_endpoint(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_docs_available_in_debug(client: AsyncClient):
-    """Test that OpenAPI docs are available in debug mode."""
+async def test_docs_availability_matches_debug_setting(client: AsyncClient):
+    """OpenAPI docs are exposed only when DEBUG is enabled."""
+    from app.config import settings
+
     response = await client.get("/docs")
-    # In debug mode, docs should be available (redirect or 200)
-    assert response.status_code in [200, 307]
+    assert response.status_code in ([200, 307] if settings.DEBUG else [404])

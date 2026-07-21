@@ -93,8 +93,16 @@ class TTSService:
             return False
 
     async def initialize(self):
-        """Load the Chatterbox model (downloaded from HuggingFace on first run)."""
+        """Load the Chatterbox model (downloaded from HuggingFace on first run).
+
+        No-op for cloud providers (xai) — they hit the API on each synthesis.
+        """
         if self.model is not None:
+            return
+
+        # Cloud providers don't load a local model.
+        if self.provider == "xai":
+            logger.info("TTS provider 'xai' — synthesis hits api.x.ai/v1/tts at call time")
             return
 
         if self.provider != "chatterbox":
@@ -136,6 +144,32 @@ class TTSService:
             and gTTS was used instead — voice cloning is lost in that case.
         """
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+        # xAI cloud TTS — preferred path when TTS_PROVIDER=xai.
+        if self.provider == "xai":
+            try:
+                await self._xai_synthesize(text, output_path, language)
+                return SynthResult(
+                    output_path=output_path,
+                    engine="xai",
+                    fallback=False,
+                    voice_cloned=False,
+                )
+            except Exception as e:
+                logger.warning(f"xAI TTS failed ({e}), falling back to edge-tts")
+                try:
+                    await self._edge_fallback(text, output_path, language)
+                    engine = "edge-tts"
+                except Exception as edge_err:
+                    logger.warning(f"Edge TTS failed ({edge_err}), falling back to gTTS")
+                    await self._gtts_fallback(text, output_path, language)
+                    engine = "gtts"
+                return SynthResult(
+                    output_path=output_path,
+                    engine=engine,
+                    fallback=True,
+                    voice_cloned=False,
+                )
 
         try:
             if self.model is None:
@@ -189,6 +223,55 @@ class TTSService:
                 fallback=True,
                 voice_cloned=False,
             )
+
+    async def _xai_synthesize(self, text: str, output_path: str, language: str = "en") -> str:
+        """Synthesize via the xAI (Grok) cloud TTS API.
+
+        Endpoint: POST https://api.x.ai/v1/tts
+        Body:    { model, text, voice, language }
+        Returns: MP3 audio bytes → decoded to WAV for the rest of the pipeline.
+        """
+        import httpx
+        from pydub import AudioSegment
+
+        api_key = getattr(settings, "XAI_API_KEY", "") or settings.OPENAI_API_KEY
+        base_url = getattr(settings, "XAI_TTS_BASE_URL", "https://api.x.ai/v1")
+        voice = getattr(settings, "XAI_TTS_VOICE", "altair")
+        model = getattr(settings, "XAI_TTS_MODEL", "grok-tts-1")
+
+        if not api_key or api_key == "not-needed":
+            raise RuntimeError("XAI_API_KEY (or OPENAI_API_KEY) not configured")
+
+        logger.info(f"Synthesizing (xai, voice={voice}, lang={language}): {text[:80]}...")
+        mp3_path = output_path.replace(".wav", "_xai.mp3")
+
+        payload = {
+            "model": model,
+            "text": text,
+            "voice": voice,
+            "language": language,
+        }
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                f"{base_url.rstrip('/')}/tts",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            resp.raise_for_status()
+            Path(mp3_path).write_bytes(resp.content)
+
+        # MP3 → WAV (downstream pipeline expects WAV).
+        await asyncio.to_thread(
+            lambda: AudioSegment.from_mp3(mp3_path).export(output_path, format="wav")
+        )
+        Path(mp3_path).unlink(missing_ok=True)
+
+        logger.info(f"xAI TTS synthesis complete: {output_path}")
+        return output_path
 
     async def _edge_fallback(self, text: str, output_path: str, language: str = "en") -> str:
         """Free neural-voice fallback via Microsoft Edge TTS (no key, no GPU)."""

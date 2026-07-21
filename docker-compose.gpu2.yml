@@ -1,0 +1,82 @@
+# Local multi-GPU deployment override for this host.
+# Pins the live WebSocket animator to GPU 0 and Celery video work to GPU 1,
+# remaps host ports already taken on this machine, and disables the
+# optional nginx service so we don't grab ports 80/443.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu2.yml up -d --build
+
+services:
+  postgres:
+    ports: !override
+      - "5433:5432"
+
+  redis:
+    ports: !override
+      - "6380:6379"
+
+  backend:
+    env_file: .env
+    ports: !override
+      - "8100:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Pin xAI key directly — shell env was winning compose's ${OPENAI_API_KEY}
+    # interpolation in the base compose file and leaking the wrong key in.
+    environment:
+      - OPENAI_API_KEY=${XAI_API_KEY:?XAI_API_KEY must be set}
+      - OPENAI_BASE_URL=https://api.x.ai/v1
+      - LLM_PROVIDER=openai
+      - LLM_MODEL=grok-4.20-0309-non-reasoning
+      - TTS_PROVIDER=xai
+      - XAI_API_KEY=${XAI_API_KEY:?XAI_API_KEY must be set}
+      - XAI_TTS_BASE_URL=https://api.x.ai/v1
+      - XAI_TTS_VOICE=altair
+      - XAI_TTS_MODEL=grok-tts-1
+      # One process must own the persistent MuseTalk worker and GPU model.
+      - UVICORN_WORKERS=1
+      # Persist face-alignment checkpoints with the MuseTalk model assets.
+      - TORCH_HOME=/app/models/torch
+    deploy:
+      resources:
+        reservations:
+          devices: !override
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
+
+  celery-worker:
+    env_file: .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - OPENAI_API_KEY=${XAI_API_KEY:?XAI_API_KEY must be set}
+      - OPENAI_BASE_URL=https://api.x.ai/v1
+      - LLM_PROVIDER=openai
+      - LLM_MODEL=grok-4.20-0309-non-reasoning
+      - TTS_PROVIDER=xai
+      - XAI_API_KEY=${XAI_API_KEY:?XAI_API_KEY must be set}
+      - XAI_TTS_BASE_URL=https://api.x.ai/v1
+      - XAI_TTS_VOICE=altair
+      - XAI_TTS_MODEL=grok-tts-1
+    deploy:
+      resources:
+        reservations:
+          devices: !override
+            - driver: nvidia
+              device_ids: ['1']
+              capabilities: [gpu]
+
+  flower:
+    env_file: .env
+    ports: !override
+      - "5556:5555"
+
+  frontend:
+    ports: !override
+      - "3000:3000"
+
+  # nginx disabled — not needed for local GPU deploy, avoids grabbing :80/:443
+  nginx:
+    profiles:
+      - never

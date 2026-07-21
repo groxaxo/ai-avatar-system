@@ -116,7 +116,33 @@ async def test_rate_limit_returns_429_not_500():
         third = await c.get("/ping")
         assert third.status_code == 429
         assert "Retry-After" in third.headers
-        assert third.json()["detail"] == "Rate limit exceeded. Try again later."
+    assert third.json()["detail"] == "Rate limit exceeded. Try again later."
+
+
+async def test_uploaded_media_allows_cross_origin_embedding():
+    """Public media must load when frontend and backend use different hosts."""
+    from fastapi import FastAPI
+
+    from app.middleware.security import SecurityHeadersMiddleware
+
+    app = FastAPI()
+    app.add_middleware(SecurityHeadersMiddleware)
+
+    @app.get("/uploads/avatar.jpg")
+    async def media():
+        return {"ok": True}
+
+    @app.get("/private")
+    async def private():
+        return {"ok": True}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        media = await c.get("/uploads/avatar.jpg")
+        private = await c.get("/private")
+
+    assert media.headers["Cross-Origin-Resource-Policy"] == "cross-origin"
+    assert private.headers["Cross-Origin-Resource-Policy"] == "same-site"
 
 
 def test_settings_accepts_comma_separated_lists():

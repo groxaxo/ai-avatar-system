@@ -42,6 +42,7 @@ def _reply(obj: dict):
     sys.stdout.flush()
 
 
+@torch.inference_mode()
 def _run_job(job, vae, unet, pe, audio_processor, whisper, fp, timesteps, device):
     image_path   = job["image"]
     audio_path   = job["audio"]
@@ -131,7 +132,9 @@ def _run_job(job, vae, unet, pe, audio_processor, whisper, fp, timesteps, device
     os.system(f"ffmpeg -y -v warning -r {FPS} -f image2 "
               f"-i {frames_dir}/%08d.png "
               f"-vcodec libx264 -vf format=yuv420p -crf 18 {tmp_vid}")
-    os.system(f"ffmpeg -y -v warning -i {audio_path} -i {tmp_vid} {output_path}")
+    os.system(f"ffmpeg -y -v warning -i {audio_path} -i {tmp_vid} "
+              f"-map 1:v:0 -map 0:a:0 -c:v copy "
+              f"-c:a aac -b:a 192k -shortest {output_path}")
     shutil.rmtree(frames_dir)
     os.remove(tmp_vid)
 

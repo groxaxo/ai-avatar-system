@@ -79,10 +79,11 @@ async def test_no_token_rejected_when_not_debug(patched_session_local, monkeypat
 
 
 @pytest.mark.asyncio
-async def test_no_token_demo_session_allowed_in_debug(patched_session_local, monkeypatch):
-    # The seeded demo fallback only applies to the demo-user session in DEBUG.
+@pytest.mark.parametrize("debug", [False, True])
+async def test_no_token_demo_session_allowed(patched_session_local, monkeypatch, debug):
+    # Guest sessions are tokenless in both development and production.
     sid = await _seed_session(patched_session_local, "demo-user")
-    monkeypatch.setattr(main.settings, "DEBUG", True)
+    monkeypatch.setattr(main.settings, "DEBUG", debug)
     assert await main._verify_ws_session(sid, None) == "demo-user"
 
 

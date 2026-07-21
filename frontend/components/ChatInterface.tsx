@@ -754,7 +754,7 @@ export function ChatInterface({ avatarId, voiceId, resumeSessionId, onSessionCre
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const isSpeaking = showVideo && !isProcessing
+  const isSpeaking = showVideo
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-[calc(100vh-10rem)]">
@@ -790,7 +790,7 @@ export function ChatInterface({ avatarId, voiceId, resumeSessionId, onSessionCre
             <video ref={preloadVideoRef} className="hidden" preload="auto" muted />
 
             {/* ── Processing overlay ── */}
-            {isProcessing && (
+            {isProcessing && !showVideo && (
               <div className="absolute inset-0 bg-surface-950/75 backdrop-blur-sm flex flex-col
                               items-center justify-center gap-4 z-20">
                 <div className="relative">

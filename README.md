@@ -50,7 +50,7 @@ AvatarAI is an open-source, production-ready platform for building **photorealis
 **What makes AvatarAI different:**
 - 🎤 **Zero-shot voice cloning** — 10 seconds of audio is all you need (Chatterbox Multilingual)
 - 🎭 **Any face, any language** — upload a JPEG, pick from 23 languages, start talking
-- ⚡ **Token-streaming pipeline** — the LLM streams live tokens while TTS + lip-sync run per sentence; the first video chunk plays before the model finishes its reply
+- ⚡ **Token-streaming pipeline** — the LLM streams live tokens while TTS + lip-sync run per sentence; the first video chunk keeps playing unobstructed while later chunks render
 - ✋ **Barge-in** — speak (or hit stop) mid-reply and the avatar yields instantly, like a real conversation
 - 🔒 **100% local mode** — local storage, local Whisper, local LLM via Ollama: nothing leaves your machine
 - 🔌 **Multi-LLM** — Claude (with prompt caching), GPT-4o, or any local model via Ollama / vLLM / LM Studio
@@ -91,6 +91,10 @@ AvatarAI is an open-source, production-ready platform for building **photorealis
 | 🌍 **23 Languages** | Whisper multilingual STT + Chatterbox multilingual TTS |
 | 🏠 **Local-First Storage** | `USE_LOCAL_STORAGE=true` — no AWS needed for dev |
 | 🔐 **Auth & Sessions** | JWT authentication, conversation history, persistent sessions |
+
+Anonymous testers share the built-in guest workspace. The backend maintains a
+non-login-capable `demo-user` principal so guest avatar uploads persist without
+requiring registration, and guest chat sessions connect without a JWT.
 | 📊 **Observability** | Prometheus · Celery Flower · Sentry · structured logging |
 | 🧪 **Tested** | Full pytest suite — users, avatars, sessions, health checks |
 | 🚀 **AWS GPU Deploy** | One-command `g5.xlarge` deploy with CUDA 11.8 + float16 |
@@ -248,6 +252,13 @@ AVATAR_ENGINE=musetalk
 # Restart
 docker compose restart backend
 ```
+
+The setup script pins the MuseTalk source and model revisions. Docker deployments
+must bake the MuseTalk Python dependencies into the backend image; the downloaded
+assets alone are not sufficient. Run a single Uvicorn worker per GPU-backed
+backend (`UVICORN_WORKERS=1`) because each process owns a persistent model worker.
+For local storage, `/uploads/` responses permit cross-origin embedding so a
+frontend and backend on different ports or LAN hostnames can display media.
 
 ---
 
@@ -488,6 +499,7 @@ pytest --cov=app --cov-report=html  # HTML coverage
 
 ## 📰 What's New
 
+- **2026-07** — MuseTalk output preserves its CRF 18 video stream while muxing audio, avoiding a second lossy H.264 encode
 - **2026-06** — Edge-TTS neural fallback chain · local LLMs via Ollama/vLLM · demo avatar seeding · prebuilt GHCR images · cascade-delete + WebM-STT + 429 fixes · SEO/metadata pass
 - **2026-05** — httpOnly-cookie auth (XSS-safe) · conversation resume from history · end-to-end WebSocket tests · perf indexes (migration 0002)
 - **2026-03** — Chatterbox Multilingual replaces XTTS v2 (23 languages) · MuseTalk persistent worker (models load once) · barge-in interruption · live token streaming
@@ -538,7 +550,7 @@ Run `bash scripts/setup_musetalk.sh` — downloads ~9 GB of models automatically
 <details>
 <summary><strong>Why does the first response take longer?</strong></summary>
 
-The MuseTalk persistent worker loads all models into GPU VRAM on the first request (~60 s on GPU, ~5 min on CPU). Subsequent requests reuse the loaded models.
+The MuseTalk persistent worker loads all models into GPU VRAM on the first request (~60 s on GPU, ~5 min on CPU). Subsequent requests reuse the loaded models. Inference mode prevents autograd graphs from accumulating between turns; models remain resident without CPU offload.
 </details>
 
 <details>

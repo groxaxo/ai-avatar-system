@@ -79,26 +79,25 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Cache service init failed: {e}")
 
-    # Seed demo user ONLY in DEBUG/development mode. An empty-password user
-    # in production would be a critical auth bypass.
-    if settings.DEBUG:
-        try:
-            async with AsyncSessionLocal() as session:
-                result = await session.execute(select(User).where(User.id == "demo-user"))
-                if result.scalar_one_or_none() is None:
-                    session.add(
-                        User(
-                            id="demo-user",
-                            email="demo@localhost",
-                            username="demo",
-                            hashed_password="",  # disabled — login route rejects empty passwords
-                            full_name="Demo User",
-                        )
+    # Anonymous routes store data under this shared guest principal. It cannot
+    # be used to log in because the login route rejects empty password hashes.
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(User).where(User.id == "demo-user"))
+            if result.scalar_one_or_none() is None:
+                session.add(
+                    User(
+                        id="demo-user",
+                        email="demo@localhost",
+                        username="demo",
+                        hashed_password="",
+                        full_name="Demo User",
                     )
-                    await session.commit()
-                    logger.info("Demo user created (DEBUG mode)")
-        except Exception as e:
-            logger.warning(f"Could not seed demo user: {e}")
+                )
+                await session.commit()
+                logger.info("Guest user created")
+    except Exception as e:
+        logger.warning(f"Could not seed guest user: {e}")
 
     # Mount local uploads directory so the browser can fetch images/videos
     if getattr(settings, "USE_LOCAL_STORAGE", True):
@@ -268,8 +267,8 @@ async def _verify_ws_session(session_id: str, token: str | None) -> str | None:
     or None if the session is unknown / token invalid / token user doesn't own
     the session.
 
-    In DEBUG mode (single-user dev) we fall back to the seeded `demo-user`
-    when no token is supplied.
+    Tokenless connections are allowed only for sessions in the shared guest
+    workspace (`demo-user`).
     """
     try:
         async with AsyncSessionLocal() as db:
@@ -292,8 +291,9 @@ async def _verify_ws_session(session_id: str, token: str | None) -> str | None:
                     return user_id
                 return None
 
-            # No token: only allowed for the demo session in DEBUG mode
-            if settings.DEBUG and sess.user_id == "demo-user":
+            # Guest sessions intentionally have no JWT. Real user sessions
+            # still require a valid token whose subject owns the session.
+            if sess.user_id == "demo-user":
                 return "demo-user"
             return None
     except Exception as e:

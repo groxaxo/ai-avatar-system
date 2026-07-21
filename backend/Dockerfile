@@ -24,14 +24,23 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements
 COPY requirements.txt .
 
+# Pre-install numpy + setuptools so source-build packages (pkuseg) can import
+# numpy in their setup.py during dependency resolution.
+RUN pip install --no-cache-dir "numpy==1.25.2" "setuptools==69.5.1" wheel
+
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install chatterbox-tts separately with --no-deps — its pins (gradio,
+# fastapi>=0.115, etc.) conflict with our stack. Runtime deps are already
+# declared explicitly in requirements.txt.
+RUN pip install --no-cache-dir --no-deps chatterbox-tts==0.1.5
+
 # Install PyTorch with CUDA 11.8 (matches base image)
 RUN pip install --no-cache-dir \
-    torch==2.2.0+cu118 \
-    torchvision==0.17.0+cu118 \
-    torchaudio==2.2.0+cu118 \
+    torch==2.6.0+cu118 \
+    torchvision==0.21.0+cu118 \
+    torchaudio==2.6.0+cu118 \
     --index-url https://download.pytorch.org/whl/cu118
 
 # Copy application code

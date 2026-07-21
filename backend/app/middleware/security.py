@@ -72,7 +72,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         # Modern Spectre/XS-Leaks mitigations
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-        response.headers["Cross-Origin-Resource-Policy"] = "same-site"
+        response.headers["Cross-Origin-Resource-Policy"] = (
+            "cross-origin" if request.url.path.startswith("/uploads/") else "same-site"
+        )
 
         return response
 

@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import tempfile
+from collections import deque
 from pathlib import Path
 from typing import Optional
 
@@ -38,6 +39,8 @@ class AvatarAnimator:
         self._worker_proc: Optional[asyncio.subprocess.Process] = None
         self._worker_lock = asyncio.Lock()
         self._worker_env: dict = {}
+        self._worker_stderr_task: Optional[asyncio.Task] = None
+        self._worker_stderr_tail: deque[str] = deque(maxlen=100)
 
         if self.device == "cuda":
             gpu_name = torch.cuda.get_device_name(0)
@@ -121,6 +124,39 @@ class AvatarAnimator:
 
     # ── persistent worker management ─────────────────────────────────────────
 
+    async def _drain_worker_stderr(self, stream: asyncio.StreamReader) -> None:
+        """Keep the child stderr pipe from filling and retain startup diagnostics."""
+        while line := await stream.readline():
+            message = line.decode(errors="replace").rstrip()
+            self._worker_stderr_tail.append(message)
+            logger.debug("MuseTalk worker: %s", message)
+
+    async def _wait_for_worker_ready(self, proc: asyncio.subprocess.Process) -> None:
+        """Ignore library startup chatter on stdout until the worker signals READY."""
+        while line := await proc.stdout.readline():
+            message = line.decode(errors="replace").strip()
+            if message.startswith("READY"):
+                return
+            if message:
+                logger.debug("MuseTalk startup: %s", message)
+        raise RuntimeError("MuseTalk worker exited before signaling READY")
+
+    async def _wait_for_worker_result(self, proc: asyncio.subprocess.Process) -> dict:
+        """Ignore upstream progress output until the worker emits its JSON result."""
+        while line := await proc.stdout.readline():
+            message = line.decode(errors="replace").strip()
+            if not message:
+                continue
+            try:
+                result = json.loads(message)
+            except json.JSONDecodeError:
+                logger.debug("MuseTalk inference: %s", message)
+                continue
+            if isinstance(result, dict) and "status" in result:
+                return result
+            logger.debug("MuseTalk inference JSON: %s", message)
+        raise RuntimeError("MuseTalk worker exited before returning a result")
+
     async def _ensure_worker(self) -> asyncio.subprocess.Process:
         """Start the persistent worker if not already running."""
         if self._worker_proc is not None and self._worker_proc.returncode is None:
@@ -139,6 +175,8 @@ class AvatarAnimator:
             cwd=str(musetalk_dir),
             env=self._worker_env,
         )
+        self._worker_stderr_tail.clear()
+        self._worker_stderr_task = asyncio.create_task(self._drain_worker_stderr(proc.stderr))
 
         # Send init config — include float16 flag so worker can optimise for GPU
         init_msg = (
@@ -160,17 +198,14 @@ class AvatarAnimator:
         model_load_timeout = 120 if self.device == "cuda" else 600
         logger.info(f"Waiting for worker to finish loading models (timeout={model_load_timeout}s)…")
         try:
-            ready_line = await asyncio.wait_for(proc.stdout.readline(), timeout=model_load_timeout)
-        except asyncio.TimeoutError:
+            await asyncio.wait_for(self._wait_for_worker_ready(proc), timeout=model_load_timeout)
+        except (asyncio.TimeoutError, RuntimeError) as exc:
             proc.kill()
-            raise RuntimeError("MuseTalk worker timed out while loading models")
-
-        if not ready_line.decode().strip().startswith("READY"):
-            stderr_out = await proc.stderr.read()
-            proc.kill()
+            await proc.wait()
+            stderr_tail = "\n".join(self._worker_stderr_tail)
             raise RuntimeError(
-                f"Worker failed to start. stderr:\n{stderr_out.decode(errors='replace')}"
-            )
+                f"MuseTalk worker failed to become ready: {exc}. stderr tail:\n{stderr_tail}"
+            ) from exc
 
         logger.info("MuseTalk worker ready — models loaded")
         self._worker_proc = proc
@@ -209,20 +244,14 @@ class AvatarAnimator:
             # GPU: expect ~5-15s per sentence; CPU: up to 5 min
             infer_timeout = 60 if self.device == "cuda" else 300
             try:
-                result_line = await asyncio.wait_for(proc.stdout.readline(), timeout=infer_timeout)
+                result = await asyncio.wait_for(
+                    self._wait_for_worker_result(proc), timeout=infer_timeout
+                )
             except asyncio.TimeoutError:
                 proc.kill()
                 self._worker_proc = None
                 raise RuntimeError(f"MuseTalk inference timed out after {infer_timeout}s")
 
-            # Empty read == worker exited mid-job (EOF on stdout). Reset so the
-            # next call respawns instead of erroring on a half-dead process.
-            if not result_line:
-                proc.kill()
-                self._worker_proc = None
-                raise RuntimeError("MuseTalk worker exited before returning a result")
-
-            result = json.loads(result_line.decode().strip())
             if result["status"] != "ok":
                 raise RuntimeError(result.get("msg", "Unknown worker error"))
 

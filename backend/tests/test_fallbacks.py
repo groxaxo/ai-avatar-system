@@ -27,6 +27,7 @@ def test_legacy_coqui_provider_aliases_to_chatterbox(monkeypatch):
 
 async def test_tts_falls_back_to_edge_when_chatterbox_unavailable(monkeypatch, tmp_path):
     service = TTSService()
+    service.provider = "chatterbox"
     out = str(tmp_path / "out.wav")
 
     monkeypatch.setattr(service, "initialize", AsyncMock(side_effect=RuntimeError("no chatterbox")))
@@ -44,6 +45,7 @@ async def test_tts_falls_back_to_edge_when_chatterbox_unavailable(monkeypatch, t
 
 async def test_tts_falls_back_to_gtts_when_edge_also_fails(monkeypatch, tmp_path):
     service = TTSService()
+    service.provider = "chatterbox"
     out = str(tmp_path / "out.wav")
 
     monkeypatch.setattr(service, "initialize", AsyncMock(side_effect=RuntimeError("no chatterbox")))

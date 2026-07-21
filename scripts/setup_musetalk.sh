@@ -9,6 +9,10 @@ MODELS_DIR="$BACKEND_DIR/models"
 MUSETALK_DIR="$MODELS_DIR/MuseTalk"
 VENV_PYTHON="$BACKEND_DIR/venv/bin/python"
 SENTINEL="$PROJECT_ROOT/.musetalk_ready"
+MUSETALK_COMMIT="0a89dec45a0192b824e3cf4daf96c239440c5ed8"
+MUSETALK_MODEL_REVISION="3ef28bc5cff08c90ad8178a25f1b570cd800170f"
+WHISPER_REVISION="169d4a4341b33bc18d8881c4b69c2e104e1cc0af"
+VAE_REVISION="31f26fdeee1355a5c34592e401dd41e45d25a493"
 
 if [ ! -f "$VENV_PYTHON" ]; then
   VENV_PYTHON="python3"
@@ -22,13 +26,14 @@ echo ""
 
 # ── 1. Clone MuseTalk ────────────────────────────────────────────────────────
 if [ -d "$MUSETALK_DIR/.git" ]; then
-  echo "[1/5] MuseTalk already cloned — pulling latest..."
-  git -C "$MUSETALK_DIR" pull --ff-only
+  echo "[1/5] MuseTalk already cloned — fetching pinned commit..."
+  git -C "$MUSETALK_DIR" fetch origin "$MUSETALK_COMMIT"
 else
   echo "[1/5] Cloning MuseTalk..."
   mkdir -p "$MODELS_DIR"
-  git clone https://github.com/TMElyralab/MuseTalk.git "$MUSETALK_DIR"
+  git clone --no-checkout https://github.com/TMElyralab/MuseTalk.git "$MUSETALK_DIR"
 fi
+git -C "$MUSETALK_DIR" checkout --detach "$MUSETALK_COMMIT"
 
 # ── 2. Install Python dependencies ──────────────────────────────────────────
 echo ""
@@ -147,6 +152,36 @@ def get_bbox_range(img_list, upperbondrange=0):
 PYEOF
 echo "  preprocessing.py replaced ✓"
 
+# PyTorch 2.6 changed torch.load() to weights_only=True by default. MuseTalk's
+# pinned, trusted face-parsing checkpoints use the legacy serialization format,
+# so opt out explicitly for only those two fixed-source model files.
+FACE_PARSING_DIR="$MUSETALK_DIR/musetalk/utils/face_parsing"
+"$VENV_PYTHON" - "$FACE_PARSING_DIR" << 'PYEOF'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+replacements = {
+    root / "resnet.py": [
+        ("torch.load(model_path)", "torch.load(model_path, weights_only=False)"),
+    ],
+    root / "__init__.py": [
+        ("torch.load(model_pth)", "torch.load(model_pth, weights_only=False)"),
+        (
+            "torch.load(model_pth, map_location=torch.device('cpu'))",
+            "torch.load(model_pth, map_location=torch.device('cpu'), weights_only=False)",
+        ),
+    ],
+}
+
+for path, changes in replacements.items():
+    source = path.read_text()
+    for old, new in changes:
+        source = source.replace(old, new)
+    path.write_text(source)
+PYEOF
+echo "  face-parsing checkpoint loads patched for PyTorch 2.6 ✓"
+
 # ── 3b. Install our custom persistent worker ────────────────────────────────
 # musetalk_worker.py is OUR driver (loads the models once and serves inference
 # jobs over stdin/stdout), not part of upstream MuseTalk — so the git clone
@@ -172,11 +207,13 @@ echo "[4/5] Downloading MuseTalk model weights (~8.8 GB total)..."
 # gdown is required for the Google Drive face parsing model
 "$VENV_PYTHON" -m pip install -q gdown
 
-"$VENV_PYTHON" - "$MUSETALK_DIR" << 'PYEOF'
+"$VENV_PYTHON" - "$MUSETALK_DIR" \
+  "$MUSETALK_MODEL_REVISION" "$WHISPER_REVISION" "$VAE_REVISION" << 'PYEOF'
 from huggingface_hub import snapshot_download
 import os, sys, urllib.request, subprocess
 
 musetalk_dir = sys.argv[1]
+musetalk_revision, whisper_revision, vae_revision = sys.argv[2:5]
 models_target = os.path.join(musetalk_dir, "models")
 os.makedirs(models_target, exist_ok=True)
 
@@ -184,6 +221,7 @@ os.makedirs(models_target, exist_ok=True)
 print("  Downloading TMElyralab/MuseTalk weights (~7 GB)...")
 snapshot_download(
     repo_id="TMElyralab/MuseTalk",
+    revision=musetalk_revision,
     local_dir=models_target,
     ignore_patterns=["*.md", "*.txt", "*.gitattributes"],
 )
@@ -195,6 +233,7 @@ if not os.path.isdir(whisper_target) or not os.listdir(whisper_target):
     print("  Downloading openai/whisper-tiny (~150 MB)...")
     snapshot_download(
         repo_id="openai/whisper-tiny",
+        revision=whisper_revision,
         local_dir=whisper_target,
         ignore_patterns=["*.md", "*.gitattributes", "flax_model*", "tf_model*", "rust_model*"],
     )
@@ -208,6 +247,7 @@ if not os.path.isdir(vae_target) or not os.listdir(vae_target):
     print("  Downloading stabilityai/sd-vae-ft-mse (~335 MB)...")
     snapshot_download(
         repo_id="stabilityai/sd-vae-ft-mse",
+        revision=vae_revision,
         local_dir=vae_target,
         ignore_patterns=["*.md", "*.gitattributes"],
     )

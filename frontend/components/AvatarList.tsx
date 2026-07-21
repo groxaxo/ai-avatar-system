@@ -146,6 +146,7 @@ export function AvatarList({ selectedAvatar, onSelectAvatar }: AvatarListProps) 
                         src={(avatar.thumbnail_url || avatar.image_url) as string}
                         alt={avatar.name}
                         fill
+                        unoptimized
                         className="object-cover transition-transform duration-500 group-hover:scale-110"
                       />
                     ) : (

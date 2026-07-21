@@ -1,0 +1,5 @@
+models/
+uploads/
+voice_profiles/
+__pycache__/
+*.py[cod]

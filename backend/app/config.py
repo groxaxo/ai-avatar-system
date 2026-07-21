@@ -77,8 +77,15 @@ class Settings(BaseSettings):
 
     # TTS Configuration
     # chatterbox: Resemble AI's open-source SOTA TTS (default, voice cloning + 23 langs)
+    # xai:        Grok cloud TTS via api.x.ai/v1/tts (no GPU, no cloning)
+    # edge-tts / gtts: auto-fallbacks used when the primary engine fails
     TTS_PROVIDER: str = "chatterbox"
     TTS_VOICE: str = "default"
+    # xAI (Grok) TTS settings — used only when TTS_PROVIDER=xai
+    XAI_API_KEY: str = ""
+    XAI_TTS_BASE_URL: str = "https://api.x.ai/v1"
+    XAI_TTS_VOICE: str = "altair"  # altair|ara|atlas|carina|castor|celeste|cosmo|eve|...
+    XAI_TTS_MODEL: str = "grok-tts-1"
 
     # Security
     # Union[..., str] lets pydantic-settings keep a non-JSON env value as a
